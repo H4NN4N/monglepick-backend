@@ -44,9 +44,9 @@ public class WatchHistory {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    /** 시청한 영화 ID */
-    @Column(name = "movie_id", nullable = false)
-    private Long movieId;
+    /** 시청한 영화 ID (movies 테이블의 movie_id VARCHAR(50) 참조) */
+    @Column(name = "movie_id", nullable = false, length = 50)
+    private String movieId;
 
     /** 시청 일시 */
     @Column(name = "watched_at", nullable = false)
@@ -57,7 +57,7 @@ public class WatchHistory {
     private Double rating;
 
     @Builder
-    public WatchHistory(User user, Long movieId, LocalDateTime watchedAt, Double rating) {
+    public WatchHistory(User user, String movieId, LocalDateTime watchedAt, Double rating) {
         this.user = user;
         this.movieId = movieId;
         this.watchedAt = watchedAt;

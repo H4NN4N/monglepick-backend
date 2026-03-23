@@ -42,16 +42,16 @@ public class UserWishlist {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    /** 위시리스트에 추가된 영화 ID */
-    @Column(name = "movie_id", nullable = false)
-    private Long movieId;
+    /** 위시리스트에 추가된 영화 ID (movies 테이블의 movie_id VARCHAR(50) 참조) */
+    @Column(name = "movie_id", nullable = false, length = 50)
+    private String movieId;
 
     /** 위시리스트 추가 시각 */
     @Column(name = "added_at", nullable = false, updatable = false)
     private LocalDateTime addedAt;
 
     @Builder
-    public UserWishlist(User user, Long movieId) {
+    public UserWishlist(User user, String movieId) {
         this.user = user;
         this.movieId = movieId;
     }

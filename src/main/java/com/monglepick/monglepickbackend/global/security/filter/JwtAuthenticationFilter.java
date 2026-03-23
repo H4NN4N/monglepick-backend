@@ -72,10 +72,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // 2. 토큰이 존재하고 유효한 경우에만 인증 처리
             if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
                 // 3. 토큰에서 사용자 ID 추출
-                Long userId = jwtTokenProvider.extractUserId(token);
+                String userId = jwtTokenProvider.extractUserId(token);
 
                 // 4. Spring Security 인증 객체 생성
-                // - principal: 사용자 ID (Long)
+                // - principal: 사용자 ID (String)
                 // - credentials: null (JWT 인증에서는 별도 자격증명 불필요)
                 // - authorities: ROLE_USER (기본 역할)
                 UsernamePasswordAuthenticationToken authentication =

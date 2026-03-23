@@ -34,7 +34,7 @@ public class MovieService {
      * @return 영화 정보 응답 DTO
      * @throws BusinessException 영화를 찾을 수 없는 경우
      */
-    public MovieResponse getMovie(Long movieId) {
+    public MovieResponse getMovie(String movieId) {
         Movie movie = movieRepository.findById(movieId)
                 .orElseThrow(() -> {
                     log.warn("영화 조회 실패 - 존재하지 않는 ID: {}", movieId);

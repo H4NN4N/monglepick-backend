@@ -15,5 +15,5 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Post> findByCategory(Post.Category category, Pageable pageable);
 
     /** 사용자별 게시글 목록 조회 (마이페이지용) */
-    Page<Post> findByUserId(Long userId, Pageable pageable);
+    Page<Post> findByUser_UserId(String userId, Pageable pageable);
 }

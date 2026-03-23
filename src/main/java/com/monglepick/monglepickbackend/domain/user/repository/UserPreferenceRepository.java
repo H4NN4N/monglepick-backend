@@ -22,5 +22,5 @@ public interface UserPreferenceRepository extends JpaRepository<UserPreference, 
      * @param userId 사용자 ID
      * @return 사용자 선호도 Optional
      */
-    Optional<UserPreference> findByUserId(Long userId);
+    Optional<UserPreference> findByUser_UserId(String userId);
 }

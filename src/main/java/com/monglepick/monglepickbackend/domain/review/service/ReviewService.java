@@ -42,9 +42,9 @@ public class ReviewService {
      * @throws BusinessException 중복 리뷰인 경우
      */
     @Transactional
-    public ReviewResponse createReview(Long movieId, ReviewCreateRequest request, Long userId) {
+    public ReviewResponse createReview(String movieId, ReviewCreateRequest request, String userId) {
         // 1. 중복 리뷰 검사
-        if (reviewRepository.existsByUserIdAndMovieId(userId, movieId)) {
+        if (reviewRepository.existsByUser_UserIdAndMovieId(userId, movieId)) {
             log.warn("리뷰 작성 실패 - 중복 리뷰: userId={}, movieId={}", userId, movieId);
             throw new BusinessException(ErrorCode.DUPLICATE_REVIEW);
         }
@@ -74,7 +74,7 @@ public class ReviewService {
      * @param movieId 영화 ID
      * @return 리뷰 목록
      */
-    public List<ReviewResponse> getReviewsByMovie(Long movieId) {
+    public List<ReviewResponse> getReviewsByMovie(String movieId) {
         return reviewRepository.findByMovieId(movieId).stream()
                 .map(ReviewResponse::from)
                 .toList();

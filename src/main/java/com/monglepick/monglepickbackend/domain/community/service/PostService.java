@@ -38,7 +38,7 @@ public class PostService {
      * @return 생성된 게시글 응답 DTO
      */
     @Transactional
-    public PostResponse createPost(PostCreateRequest request, Long userId) {
+    public PostResponse createPost(PostCreateRequest request, String userId) {
         User user = findUserById(userId);
         Post.Category category = Post.Category.valueOf(request.category().toUpperCase());
 
@@ -81,7 +81,7 @@ public class PostService {
      * 게시글을 수정합니다. 작성자 본인만 수정할 수 있습니다.
      */
     @Transactional
-    public PostResponse updatePost(Long postId, PostCreateRequest request, Long userId) {
+    public PostResponse updatePost(Long postId, PostCreateRequest request, String userId) {
         Post post = findPostById(postId);
         validatePostOwner(post, userId);
 
@@ -96,7 +96,7 @@ public class PostService {
      * 게시글을 삭제합니다. 작성자 본인만 삭제할 수 있습니다.
      */
     @Transactional
-    public void deletePost(Long postId, Long userId) {
+    public void deletePost(Long postId, String userId) {
         Post post = findPostById(postId);
         validatePostOwner(post, userId);
 
@@ -105,7 +105,7 @@ public class PostService {
     }
 
     /** 사용자 ID로 사용자를 조회하는 헬퍼 */
-    private User findUserById(Long userId) {
+    private User findUserById(String userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
@@ -117,8 +117,8 @@ public class PostService {
     }
 
     /** 게시글 작성자와 요청자가 일치하는지 검증하는 헬퍼 */
-    private void validatePostOwner(Post post, Long userId) {
-        if (!post.getUser().getId().equals(userId)) {
+    private void validatePostOwner(Post post, String userId) {
+        if (!post.getUser().getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
         }
     }

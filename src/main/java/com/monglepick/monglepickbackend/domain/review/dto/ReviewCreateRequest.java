@@ -13,7 +13,7 @@ import jakarta.validation.constraints.NotNull;
  */
 public record ReviewCreateRequest(
         @NotNull(message = "영화 ID는 필수입니다.")
-        Long movieId,
+        String movieId,
 
         @NotNull(message = "평점은 필수입니다.")
         @DecimalMin(value = "0.5", message = "평점은 0.5 이상이어야 합니다.")

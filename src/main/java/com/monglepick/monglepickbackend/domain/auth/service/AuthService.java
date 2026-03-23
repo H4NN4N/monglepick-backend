@@ -15,17 +15,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 /**
  * 인증 서비스
  *
  * <p>회원가입, 로그인, 토큰 갱신 등 인증 관련 비즈니스 로직을 처리합니다.</p>
- *
- * <p>처리 흐름:</p>
- * <ul>
- *   <li>회원가입: 이메일/닉네임 중복 검사 → BCrypt 암호화 → DB 저장 → 토큰 발급</li>
- *   <li>로그인: 이메일 조회 → 비밀번호 검증 → 토큰 발급</li>
- *   <li>토큰 갱신: 리프레시 토큰 검증 → 새 액세스 토큰 발급</li>
- * </ul>
  */
 @Slf4j
 @Service
@@ -39,10 +34,6 @@ public class AuthService {
 
     /**
      * 회원가입을 처리합니다.
-     *
-     * <p>이메일과 닉네임의 중복 여부를 검사한 후,
-     * 비밀번호를 BCrypt로 암호화하여 사용자를 생성합니다.
-     * 가입 즉시 로그인 처리되어 토큰이 발급됩니다.</p>
      *
      * @param request 회원가입 요청 (이메일, 비밀번호, 닉네임)
      * @return JWT 토큰 쌍 (액세스 + 리프레시)
@@ -62,27 +53,24 @@ public class AuthService {
             throw new BusinessException(ErrorCode.DUPLICATE_NICKNAME);
         }
 
-        // 3. 사용자 엔티티 생성 (비밀번호 BCrypt 암호화)
+        // 3. 사용자 엔티티 생성 (UUID 기반 userId, 비밀번호 BCrypt 암호화)
         User user = User.builder()
+                .userId(UUID.randomUUID().toString())
                 .email(request.email())
                 .nickname(request.nickname())
-                .password(passwordEncoder.encode(request.password()))
-                .role(User.Role.USER)
+                .passwordHash(passwordEncoder.encode(request.password()))
                 .build();
 
         // 4. DB에 사용자 저장
         User savedUser = userRepository.save(user);
-        log.info("회원가입 성공 - userId: {}, email: {}", savedUser.getId(), savedUser.getEmail());
+        log.info("회원가입 성공 - userId: {}, email: {}", savedUser.getUserId(), savedUser.getEmail());
 
         // 5. JWT 토큰 발급 (가입 즉시 로그인 처리)
-        return generateTokens(savedUser.getId());
+        return generateTokens(savedUser.getUserId());
     }
 
     /**
      * 로그인을 처리합니다.
-     *
-     * <p>이메일로 사용자를 조회하고, 비밀번호를 BCrypt로 검증합니다.
-     * 인증 성공 시 JWT 토큰 쌍을 발급합니다.</p>
      *
      * @param request 로그인 요청 (이메일, 비밀번호)
      * @return JWT 토큰 쌍 (액세스 + 리프레시)
@@ -97,22 +85,19 @@ public class AuthService {
                 });
 
         // 2. 비밀번호 검증 (BCrypt 해시 비교)
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            log.warn("로그인 실패 - 비밀번호 불일치: userId={}", user.getId());
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            log.warn("로그인 실패 - 비밀번호 불일치: userId={}", user.getUserId());
             throw new BusinessException(ErrorCode.LOGIN_FAILED);
         }
 
-        log.info("로그인 성공 - userId: {}, email: {}", user.getId(), user.getEmail());
+        log.info("로그인 성공 - userId: {}, email: {}", user.getUserId(), user.getEmail());
 
         // 3. JWT 토큰 발급
-        return generateTokens(user.getId());
+        return generateTokens(user.getUserId());
     }
 
     /**
      * 리프레시 토큰으로 새 액세스 토큰을 발급합니다.
-     *
-     * <p>리프레시 토큰의 유효성과 타입을 검증한 후,
-     * 새로운 액세스 토큰과 리프레시 토큰을 발급합니다.</p>
      *
      * @param refreshToken 리프레시 토큰 문자열
      * @return 새로운 JWT 토큰 쌍
@@ -133,7 +118,7 @@ public class AuthService {
         }
 
         // 3. 토큰에서 사용자 ID 추출
-        Long userId = jwtTokenProvider.extractUserId(refreshToken);
+        String userId = jwtTokenProvider.extractUserId(refreshToken);
 
         // 4. 사용자 존재 여부 확인
         if (!userRepository.existsById(userId)) {
@@ -154,7 +139,7 @@ public class AuthService {
      * @return 사용자 정보 응답 DTO
      * @throws BusinessException 사용자를 찾을 수 없는 경우
      */
-    public UserResponse getCurrentUser(Long userId) {
+    public UserResponse getCurrentUser(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         return UserResponse.from(user);
@@ -163,10 +148,10 @@ public class AuthService {
     /**
      * 사용자 ID로 액세스 토큰과 리프레시 토큰을 생성합니다.
      *
-     * @param userId 사용자 ID
+     * @param userId 사용자 ID (String)
      * @return JWT 토큰 쌍
      */
-    private TokenResponse generateTokens(Long userId) {
+    private TokenResponse generateTokens(String userId) {
         String accessToken = jwtTokenProvider.generateAccessToken(userId);
         String refreshToken = jwtTokenProvider.generateRefreshToken(userId);
         return new TokenResponse(accessToken, refreshToken);

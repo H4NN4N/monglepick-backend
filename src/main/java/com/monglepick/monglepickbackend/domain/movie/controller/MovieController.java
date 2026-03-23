@@ -39,10 +39,10 @@ public class MovieController {
      * @param id 영화 ID (내부 DB)
      * @return 200 OK + 영화 정보
      */
-    @GetMapping("/{id}")
-    public ResponseEntity<MovieResponse> getMovie(@PathVariable Long id) {
-        log.debug("영화 상세 조회 - movieId: {}", id);
-        MovieResponse movie = movieService.getMovie(id);
+    @GetMapping("/{movieId}")
+    public ResponseEntity<MovieResponse> getMovie(@PathVariable String movieId) {
+        log.debug("영화 상세 조회 - movieId: {}", movieId);
+        MovieResponse movie = movieService.getMovie(movieId);
         return ResponseEntity.ok(movie);
     }
 

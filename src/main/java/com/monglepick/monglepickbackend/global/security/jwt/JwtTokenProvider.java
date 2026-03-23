@@ -61,14 +61,14 @@ public class JwtTokenProvider {
      * @param userId 사용자 ID
      * @return 생성된 JWT 액세스 토큰 문자열
      */
-    public String generateAccessToken(Long userId) {
+    public String generateAccessToken(String userId) {
         Date now = new Date();
         // 현재 시간 + 설정된 만료 시간 (기본 1시간)
         Date expiry = new Date(now.getTime() + jwtProperties.getExpiration());
 
         return Jwts.builder()
                 // subject: 사용자 식별자
-                .subject(userId.toString())
+                .subject(userId)
                 // 커스텀 클레임: 토큰 유형 구분
                 .claim("type", "access")
                 // 발급 시간
@@ -89,13 +89,13 @@ public class JwtTokenProvider {
      * @param userId 사용자 ID
      * @return 생성된 JWT 리프레시 토큰 문자열
      */
-    public String generateRefreshToken(Long userId) {
+    public String generateRefreshToken(String userId) {
         Date now = new Date();
         // 현재 시간 + 리프레시 토큰 만료 시간 (기본 7일)
         Date expiry = new Date(now.getTime() + jwtProperties.getRefreshExpiration());
 
         return Jwts.builder()
-                .subject(userId.toString())
+                .subject(userId)
                 .claim("type", "refresh")
                 .issuedAt(now)
                 .expiration(expiry)
@@ -111,9 +111,9 @@ public class JwtTokenProvider {
      * @param token JWT 토큰 문자열
      * @return 사용자 ID
      */
-    public Long extractUserId(String token) {
+    public String extractUserId(String token) {
         Claims claims = parseClaims(token);
-        return Long.parseLong(claims.getSubject());
+        return claims.getSubject();
     }
 
     /**

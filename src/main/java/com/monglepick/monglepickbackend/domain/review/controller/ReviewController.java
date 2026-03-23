@@ -46,7 +46,7 @@ public class ReviewController {
      * @return 200 OK + 리뷰 목록
      */
     @GetMapping
-    public ResponseEntity<List<ReviewResponse>> getReviewsByMovie(@PathVariable Long movieId) {
+    public ResponseEntity<List<ReviewResponse>> getReviewsByMovie(@PathVariable String movieId) {
         List<ReviewResponse> reviews = reviewService.getReviewsByMovie(movieId);
         return ResponseEntity.ok(reviews);
     }
@@ -63,9 +63,9 @@ public class ReviewController {
      */
     @PostMapping
     public ResponseEntity<ReviewResponse> createReview(
-            @PathVariable Long movieId,
+            @PathVariable String movieId,
             @Valid @RequestBody ReviewCreateRequest request,
-            @AuthenticationPrincipal Long userId) {
+            @AuthenticationPrincipal String userId) {
 
         log.info("리뷰 작성 요청 - userId: {}, movieId: {}", userId, movieId);
         ReviewResponse review = reviewService.createReview(movieId, request, userId);

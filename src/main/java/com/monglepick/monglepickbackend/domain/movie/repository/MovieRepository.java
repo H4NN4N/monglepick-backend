@@ -20,7 +20,7 @@ import java.util.Optional;
  * 이 리포지토리는 RDB 기반의 기본 조회에만 사용됩니다.</p>
  */
 @Repository
-public interface MovieRepository extends JpaRepository<Movie, Long> {
+public interface MovieRepository extends JpaRepository<Movie, String> {
 
     /**
      * TMDB ID로 영화를 조회합니다.

@@ -4,8 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -21,13 +19,7 @@ import java.time.LocalDateTime;
  * 사용자 엔티티
  *
  * <p>MySQL users 테이블과 매핑됩니다.
- * 회원가입, 로그인, 프로필 관리에 사용됩니다.</p>
- *
- * <p>사용자 역할(Role):</p>
- * <ul>
- *   <li>USER: 일반 사용자 (기본값)</li>
- *   <li>ADMIN: 관리자 (커뮤니티 관리, 콘텐츠 관리 권한)</li>
- * </ul>
+ * DDL 기준 PK는 user_id VARCHAR(50)입니다.</p>
  */
 @Entity
 @Table(name = "users")
@@ -35,111 +27,105 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
 
-    /** 사용자 고유 식별자 (AUTO_INCREMENT) */
+    /** 사용자 고유 식별자 (VARCHAR(50), DDL PK) */
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "user_id", length = 50)
+    private String userId;
 
-    /** 이메일 주소 (로그인 ID로 사용, 유니크) */
-    @Column(nullable = false, unique = true, length = 255)
+    /** 이메일 주소 (로그인 ID로 사용) */
+    @Column(unique = true, length = 255)
     private String email;
 
-    /** 닉네임 (커뮤니티 표시명, 유니크) */
-    @Column(nullable = false, unique = true, length = 50)
+    /** 닉네임 (커뮤니티 표시명) */
+    @Column(unique = true, length = 50)
     private String nickname;
 
-    /** 비밀번호 (BCrypt 해시값 저장) */
-    @Column(nullable = false, length = 255)
-    private String password;
+    /** 비밀번호 해시 (BCrypt, 소셜 로그인 시 null) */
+    @Column(name = "password_hash", length = 255)
+    private String passwordHash;
 
-    /** 프로필 이미지 URL (선택사항) */
+    /** 프로필 이미지 URL */
     @Column(name = "profile_image", length = 500)
     private String profileImage;
 
-    /** 사용자 역할 (USER 또는 ADMIN) */
+    /** 로그인 제공자 */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private Role role;
+    @Column(length = 20)
+    private Provider provider;
+
+    /** 소셜 제공자 고유 ID */
+    @Column(name = "provider_id", length = 200)
+    private String providerId;
+
+    /** 사용자 역할 (기본값: USER) */
+    @Column(name = "user_role", length = 20)
+    private String userRole;
+
+    /** 생년월일 (YYYYMMDD) */
+    @Column(name = "user_birth", length = 20)
+    private String userBirth;
+
+    /** 선택 약관 동의 */
+    @Column(name = "option_term")
+    private Boolean optionTerm;
+
+    /** 필수 약관 동의 */
+    @Column(name = "required_term")
+    private Boolean requiredTerm;
 
     /** 계정 생성 시각 */
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     /** 정보 수정 시각 */
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    /**
-     * 사용자 역할 열거형
-     */
-    public enum Role {
-        /** 일반 사용자 */
-        USER,
-        /** 관리자 */
-        ADMIN
+    /** 로그인 제공자 열거형 */
+    public enum Provider {
+        LOCAL, NAVER, KAKAO, GOOGLE
     }
 
-    /**
-     * 빌더 패턴을 통한 사용자 생성
-     *
-     * @param email 이메일 주소
-     * @param nickname 닉네임
-     * @param password BCrypt로 암호화된 비밀번호
-     * @param profileImage 프로필 이미지 URL (선택)
-     * @param role 사용자 역할 (기본: USER)
-     */
     @Builder
-    public User(String email, String nickname, String password,
-                String profileImage, Role role) {
+    public User(String userId, String email, String nickname, String passwordHash,
+                String profileImage, Provider provider, String providerId,
+                String userRole, String userBirth, Boolean optionTerm, Boolean requiredTerm) {
+        this.userId = userId;
         this.email = email;
         this.nickname = nickname;
-        this.password = password;
+        this.passwordHash = passwordHash;
         this.profileImage = profileImage;
-        // 역할이 지정되지 않으면 기본값 USER 사용
-        this.role = role != null ? role : Role.USER;
+        this.provider = provider != null ? provider : Provider.LOCAL;
+        this.providerId = providerId;
+        this.userRole = userRole != null ? userRole : "USER";
+        this.userBirth = userBirth;
+        this.optionTerm = optionTerm != null ? optionTerm : false;
+        this.requiredTerm = requiredTerm != null ? requiredTerm : false;
     }
 
-    /**
-     * 엔티티 저장 전 자동으로 생성/수정 시각을 설정합니다.
-     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
 
-    /**
-     * 엔티티 수정 전 자동으로 수정 시각을 갱신합니다.
-     */
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
 
-    /**
-     * 닉네임을 변경합니다.
-     *
-     * @param nickname 새로운 닉네임
-     */
+    /** 닉네임 변경 */
     public void updateNickname(String nickname) {
         this.nickname = nickname;
     }
 
-    /**
-     * 프로필 이미지를 변경합니다.
-     *
-     * @param profileImage 새로운 프로필 이미지 URL
-     */
+    /** 프로필 이미지 변경 */
     public void updateProfileImage(String profileImage) {
         this.profileImage = profileImage;
     }
 
-    /**
-     * 비밀번호를 변경합니다.
-     *
-     * @param password BCrypt로 암호화된 새 비밀번호
-     */
-    public void updatePassword(String password) {
-        this.password = password;
+    /** 비밀번호 변경 */
+    public void updatePassword(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 }

@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  */
 public record ReviewResponse(
         Long id,
-        Long movieId,
+        String movieId,
         Double rating,
         String content,
         String author,

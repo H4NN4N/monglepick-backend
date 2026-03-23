@@ -12,5 +12,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface WatchHistoryRepository extends JpaRepository<WatchHistory, Long> {
     /** 사용자별 시청 이력 조회 (페이징 필수) */
-    Page<WatchHistory> findByUserId(Long userId, Pageable pageable);
+    Page<WatchHistory> findByUser_UserId(String userId, Pageable pageable);
 }

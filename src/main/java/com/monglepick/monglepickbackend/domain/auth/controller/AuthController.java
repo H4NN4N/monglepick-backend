@@ -103,7 +103,7 @@ public class AuthController {
      */
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getCurrentUser(
-            @AuthenticationPrincipal Long userId) {
+            @AuthenticationPrincipal String userId) {
 
         UserResponse userResponse = authService.getCurrentUser(userId);
         return ResponseEntity.ok(userResponse);

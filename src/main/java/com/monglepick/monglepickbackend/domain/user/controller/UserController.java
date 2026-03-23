@@ -53,7 +53,7 @@ public class UserController {
      */
     @GetMapping("/profile")
     public ResponseEntity<UserResponse> getProfile(
-            @AuthenticationPrincipal Long userId) {
+            @AuthenticationPrincipal String userId) {
 
         UserResponse profile = userService.getProfile(userId);
         return ResponseEntity.ok(profile);
@@ -71,7 +71,7 @@ public class UserController {
      */
     @GetMapping("/watch-history")
     public ResponseEntity<Page<WatchHistory>> getWatchHistory(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal String userId,
             @PageableDefault(size = 20, sort = "watchedAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
 
@@ -88,7 +88,7 @@ public class UserController {
      */
     @GetMapping("/wishlist")
     public ResponseEntity<Page<UserWishlist>> getWishlist(
-            @AuthenticationPrincipal Long userId,
+            @AuthenticationPrincipal String userId,
             @PageableDefault(size = 20, sort = "addedAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
 
@@ -108,8 +108,8 @@ public class UserController {
      */
     @PostMapping("/wishlist/{movieId}")
     public ResponseEntity<Void> addToWishlist(
-            @PathVariable Long movieId,
-            @AuthenticationPrincipal Long userId) {
+            @PathVariable String movieId,
+            @AuthenticationPrincipal String userId) {
 
         log.info("위시리스트 추가 요청 - userId: {}, movieId: {}", userId, movieId);
         userService.addToWishlist(userId, movieId);
@@ -125,8 +125,8 @@ public class UserController {
      */
     @DeleteMapping("/wishlist/{movieId}")
     public ResponseEntity<Void> removeFromWishlist(
-            @PathVariable Long movieId,
-            @AuthenticationPrincipal Long userId) {
+            @PathVariable String movieId,
+            @AuthenticationPrincipal String userId) {
 
         log.info("위시리스트 제거 요청 - userId: {}, movieId: {}", userId, movieId);
         userService.removeFromWishlist(userId, movieId);
@@ -144,7 +144,7 @@ public class UserController {
      */
     @GetMapping("/preferences")
     public ResponseEntity<UserPreference> getPreferences(
-            @AuthenticationPrincipal Long userId) {
+            @AuthenticationPrincipal String userId) {
 
         return userService.getPreferences(userId)
                 .map(ResponseEntity::ok)

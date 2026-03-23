@@ -14,11 +14,11 @@ import java.util.Optional;
  */
 public interface UserWishlistRepository extends JpaRepository<UserWishlist, Long> {
     /** 사용자별 위시리스트 조회 */
-    Page<UserWishlist> findByUserId(Long userId, Pageable pageable);
+    Page<UserWishlist> findByUser_UserId(String userId, Pageable pageable);
 
     /** 중복 추가 방지를 위한 존재 여부 확인 */
-    boolean existsByUserIdAndMovieId(Long userId, Long movieId);
+    boolean existsByUser_UserIdAndMovieId(String userId, String movieId);
 
     /** 삭제를 위한 위시리스트 항목 조회 */
-    Optional<UserWishlist> findByUserIdAndMovieId(Long userId, Long movieId);
+    Optional<UserWishlist> findByUser_UserIdAndMovieId(String userId, String movieId);
 }

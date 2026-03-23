@@ -7,20 +7,22 @@ import com.monglepick.monglepickbackend.domain.movie.entity.Movie;
  *
  * <p>영화 조회 및 검색 결과에 반환되는 데이터입니다.</p>
  *
- * @param id 영화 ID (내부 DB)
+ * @param movieId 영화 ID (VARCHAR(50))
  * @param tmdbId TMDB 영화 ID (외부 연동용)
  * @param title 한국어 제목
  * @param overview 영화 줄거리
  * @param genres 장르 목록 (JSON 문자열)
+ * @param releaseYear 개봉 연도
  * @param rating 평균 평점
  * @param posterPath 포스터 이미지 경로
  */
 public record MovieResponse(
-        Long id,
+        String movieId,
         Long tmdbId,
         String title,
         String overview,
         String genres,
+        Integer releaseYear,
         Double rating,
         String posterPath
 ) {
@@ -32,11 +34,12 @@ public record MovieResponse(
      */
     public static MovieResponse from(Movie movie) {
         return new MovieResponse(
-                movie.getId(),
+                movie.getMovieId(),
                 movie.getTmdbId(),
                 movie.getTitle(),
                 movie.getOverview(),
                 movie.getGenres(),
+                movie.getReleaseYear(),
                 movie.getRating(),
                 movie.getPosterPath()
         );

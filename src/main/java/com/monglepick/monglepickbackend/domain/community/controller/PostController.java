@@ -88,7 +88,7 @@ public class PostController {
     @PostMapping
     public ResponseEntity<PostResponse> createPost(
             @Valid @RequestBody PostCreateRequest request,
-            @AuthenticationPrincipal Long userId) {
+            @AuthenticationPrincipal String userId) {
 
         log.info("게시글 작성 요청 - userId: {}, category: {}", userId, request.category());
         PostResponse post = postService.createPost(request, userId);
@@ -107,7 +107,7 @@ public class PostController {
     public ResponseEntity<PostResponse> updatePost(
             @PathVariable Long id,
             @Valid @RequestBody PostCreateRequest request,
-            @AuthenticationPrincipal Long userId) {
+            @AuthenticationPrincipal String userId) {
 
         log.info("게시글 수정 요청 - postId: {}, userId: {}", id, userId);
         PostResponse post = postService.updatePost(id, request, userId);
@@ -124,7 +124,7 @@ public class PostController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePost(
             @PathVariable Long id,
-            @AuthenticationPrincipal Long userId) {
+            @AuthenticationPrincipal String userId) {
 
         log.info("게시글 삭제 요청 - postId: {}, userId: {}", id, userId);
         postService.deletePost(id, userId);

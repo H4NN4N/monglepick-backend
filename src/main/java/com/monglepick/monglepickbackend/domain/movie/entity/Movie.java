@@ -2,16 +2,12 @@ package com.monglepick.monglepickbackend.domain.movie.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDate;
 
 /**
  * 영화 엔티티
@@ -36,10 +32,10 @@ import java.time.LocalDate;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Movie {
 
-    /** 영화 고유 식별자 (AUTO_INCREMENT) */
+    /** 영화 고유 식별자 (VARCHAR(50), DDL에서 PK로 관리) */
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "movie_id", length = 50)
+    private String movieId;
 
     /** TMDB 영화 ID (외부 API 연동용) */
     @Column(name = "tmdb_id", unique = true)
@@ -61,9 +57,9 @@ public class Movie {
     @Column(columnDefinition = "JSON")
     private String genres;
 
-    /** 개봉일 */
-    @Column(name = "release_date")
-    private LocalDate releaseDate;
+    /** 개봉 연도 */
+    @Column(name = "release_year")
+    private Integer releaseYear;
 
     /** 평균 평점 (0.0 ~ 10.0) */
     @Column
@@ -73,16 +69,49 @@ public class Movie {
     @Column(name = "poster_path", length = 500)
     private String posterPath;
 
+    /** 출연진 정보 (JSON 배열) */
+    @Column(name = "cast_members", columnDefinition = "JSON")
+    private String castMembers;
+
+    /** 감독 정보 */
+    @Column(length = 500)
+    private String director;
+
+    /** 영화 키워드 (JSON 배열) */
+    @Column(columnDefinition = "JSON")
+    private String keywords;
+
+    /** OTT 플랫폼 정보 (JSON 배열) */
+    @Column(name = "ott_platforms", columnDefinition = "JSON")
+    private String ottPlatforms;
+
+    /** 무드 태그 (JSON 배열) */
+    @Column(name = "mood_tags", columnDefinition = "JSON")
+    private String moodTags;
+
+    /** 데이터 출처 (예: tmdb, kaggle, kobis, kmdb) */
+    @Column(length = 50)
+    private String source;
+
     @Builder
-    public Movie(Long tmdbId, String title, String titleEn, String overview,
-                 String genres, LocalDate releaseDate, Double rating, String posterPath) {
+    public Movie(String movieId, Long tmdbId, String title, String titleEn, String overview,
+                 String genres, Integer releaseYear, Double rating, String posterPath,
+                 String castMembers, String director, String keywords,
+                 String ottPlatforms, String moodTags, String source) {
+        this.movieId = movieId;
         this.tmdbId = tmdbId;
         this.title = title;
         this.titleEn = titleEn;
         this.overview = overview;
         this.genres = genres;
-        this.releaseDate = releaseDate;
+        this.releaseYear = releaseYear;
         this.rating = rating;
         this.posterPath = posterPath;
+        this.castMembers = castMembers;
+        this.director = director;
+        this.keywords = keywords;
+        this.ottPlatforms = ottPlatforms;
+        this.moodTags = moodTags;
+        this.source = source;
     }
 }

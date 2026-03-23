@@ -15,11 +15,11 @@ import java.util.List;
  */
 public interface ReviewRepository extends JpaRepository<Review, Long> {
     /** 특정 영화의 리뷰 목록 조회 */
-    List<Review> findByMovieId(Long movieId);
+    List<Review> findByMovieId(String movieId);
 
     /** 사용자별 리뷰 목록 조회 (마이페이지용) */
-    Page<Review> findByUserId(Long userId, Pageable pageable);
+    Page<Review> findByUser_UserId(String userId, Pageable pageable);
 
     /** 중복 리뷰 존재 여부 확인 (같은 사용자가 같은 영화에 2개 이상 작성 방지) */
-    boolean existsByUserIdAndMovieId(Long userId, Long movieId);
+    boolean existsByUser_UserIdAndMovieId(String userId, String movieId);
 }

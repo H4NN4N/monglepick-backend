@@ -13,7 +13,7 @@ import java.util.Optional;
  * 회원가입 시 중복 검사, 로그인 시 사용자 조회 등에 사용됩니다.</p>
  */
 @Repository
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository extends JpaRepository<User, String> {
 
     /**
      * 이메일로 사용자를 조회합니다.

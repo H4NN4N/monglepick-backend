@@ -44,7 +44,7 @@ public class UserService {
      * @return 사용자 정보 응답 DTO
      * @throws BusinessException 사용자를 찾을 수 없는 경우
      */
-    public UserResponse getProfile(Long userId) {
+    public UserResponse getProfile(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         return UserResponse.from(user);
@@ -60,9 +60,9 @@ public class UserService {
      * @param pageable 페이징 정보
      * @return 페이지 단위의 시청 이력
      */
-    public Page<WatchHistory> getWatchHistory(Long userId, Pageable pageable) {
+    public Page<WatchHistory> getWatchHistory(String userId, Pageable pageable) {
         log.debug("시청 이력 조회 - userId: {}, page: {}", userId, pageable.getPageNumber());
-        return watchHistoryRepository.findByUserId(userId, pageable);
+        return watchHistoryRepository.findByUser_UserId(userId, pageable);
     }
 
     /**
@@ -72,9 +72,9 @@ public class UserService {
      * @param pageable 페이징 정보
      * @return 페이지 단위의 위시리스트
      */
-    public Page<UserWishlist> getWishlist(Long userId, Pageable pageable) {
+    public Page<UserWishlist> getWishlist(String userId, Pageable pageable) {
         log.debug("위시리스트 조회 - userId: {}", userId);
-        return userWishlistRepository.findByUserId(userId, pageable);
+        return userWishlistRepository.findByUser_UserId(userId, pageable);
     }
 
     /**
@@ -87,9 +87,9 @@ public class UserService {
      * @throws BusinessException 이미 위시리스트에 존재하는 경우
      */
     @Transactional
-    public void addToWishlist(Long userId, Long movieId) {
+    public void addToWishlist(String userId, String movieId) {
         // 중복 확인
-        if (userWishlistRepository.existsByUserIdAndMovieId(userId, movieId)) {
+        if (userWishlistRepository.existsByUser_UserIdAndMovieId(userId, movieId)) {
             throw new BusinessException(ErrorCode.DUPLICATE_WISHLIST);
         }
 
@@ -113,9 +113,9 @@ public class UserService {
      * @throws BusinessException 위시리스트 항목을 찾을 수 없는 경우
      */
     @Transactional
-    public void removeFromWishlist(Long userId, Long movieId) {
+    public void removeFromWishlist(String userId, String movieId) {
         UserWishlist wishlist = userWishlistRepository
-                .findByUserIdAndMovieId(userId, movieId)
+                .findByUser_UserIdAndMovieId(userId, movieId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.WISHLIST_NOT_FOUND));
 
         userWishlistRepository.delete(wishlist);
@@ -130,7 +130,7 @@ public class UserService {
      * @param userId 사용자 ID
      * @return 사용자 선호도 Optional
      */
-    public Optional<UserPreference> getPreferences(Long userId) {
-        return userPreferenceRepository.findByUserId(userId);
+    public Optional<UserPreference> getPreferences(String userId) {
+        return userPreferenceRepository.findByUser_UserId(userId);
     }
 }

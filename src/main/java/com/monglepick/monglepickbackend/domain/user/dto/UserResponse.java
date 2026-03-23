@@ -14,7 +14,7 @@ import com.monglepick.monglepickbackend.domain.user.entity.User;
  * @param profileImage 프로필 이미지 URL (null 가능)
  */
 public record UserResponse(
-        Long id,
+        String userId,
         String email,
         String nickname,
         String profileImage
@@ -27,7 +27,7 @@ public record UserResponse(
      */
     public static UserResponse from(User user) {
         return new UserResponse(
-                user.getId(),
+                user.getUserId(),
                 user.getEmail(),
                 user.getNickname(),
                 user.getProfileImage()

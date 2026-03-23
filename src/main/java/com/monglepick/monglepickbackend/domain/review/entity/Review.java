@@ -43,9 +43,9 @@ public class Review {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    /** 리뷰 대상 영화 ID (movies 테이블의 ID 또는 TMDB ID) */
-    @Column(name = "movie_id", nullable = false)
-    private Long movieId;
+    /** 리뷰 대상 영화 ID (movies 테이블의 movie_id VARCHAR(50) 참조) */
+    @Column(name = "movie_id", nullable = false, length = 50)
+    private String movieId;
 
     /** 평점 (1.0 ~ 5.0, 0.5 단위) */
     @Column(nullable = false)
@@ -60,7 +60,7 @@ public class Review {
     private LocalDateTime createdAt;
 
     @Builder
-    public Review(User user, Long movieId, Double rating, String content) {
+    public Review(User user, String movieId, Double rating, String content) {
         this.user = user;
         this.movieId = movieId;
         this.rating = rating;
