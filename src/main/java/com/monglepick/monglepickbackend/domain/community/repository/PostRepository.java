@@ -1,8 +1,6 @@
 package com.monglepick.monglepickbackend.domain.community.repository;
 
 import com.monglepick.monglepickbackend.domain.community.entity.Post;
-import com.monglepick.monglepickbackend.domain.community.entity.PostStatus;
-import com.monglepick.monglepickbackend.domain.user.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,6 +16,4 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     /** 사용자별 게시글 목록 조회 (마이페이지용) */
     Page<Post> findByUser_UserId(String userId, Pageable pageable);
-
-    Page<Post> findByUserAndStatus(User user, PostStatus status, Pageable pageable);
 }

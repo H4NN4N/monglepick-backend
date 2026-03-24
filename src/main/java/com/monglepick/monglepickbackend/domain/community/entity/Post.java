@@ -76,11 +76,6 @@ public class Post {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    /** 게시글 상태 (임시저장 / 게시됨) */
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private PostStatus status;
-
     /**
      * 게시글 카테고리 열거형
      */
@@ -94,16 +89,13 @@ public class Post {
         /** 영화 뉴스/소식 */
         NEWS
     }
-    /** 임시저장 기능 만드는 중 */
 
-    /**빌더 상태 추가*/
     @Builder
-    public Post(User user, String title, String content, Category category, PostStatus status) {
+    public Post(User user, String title, String content, Category category) {
         this.user = user;
         this.title = title;
         this.content = content;
         this.category = category;
-        this.status = status;
         this.viewCount = 0;
     }
 
@@ -129,10 +121,4 @@ public class Post {
     public void incrementViewCount() {
         this.viewCount++;
     }
-
-    /** 임시저장 → 게시글 업로드 */
-    public void publish() {
-        this.status = PostStatus.PUBLISHED;
-    }
-
 }
