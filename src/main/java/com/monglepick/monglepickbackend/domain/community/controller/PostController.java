@@ -13,7 +13,15 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 게시글 컨트롤러
@@ -43,13 +51,13 @@ public class PostController {
      * 게시글 목록 조회 API
      *
      * @param category 게시글 카테고리 필터 (선택: FREE, DISCUSSION, RECOMMENDATION, NEWS)
-     * @param pageable 페이징 정보 (기본: 15건, 최신순)
+     * @param pageable 페이징 정보 (기본: 20건, 최신순)
      * @return 200 OK + 페이지 단위의 게시글 목록
      */
     @GetMapping
     public ResponseEntity<Page<PostResponse>> getPosts(
             @RequestParam(required = false) String category,
-            @PageableDefault(size = 15, page = 10, sort = "createdAt", direction = Sort.Direction.DESC)
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
 
         Page<PostResponse> posts = postService.getPosts(category, pageable);
@@ -74,15 +82,14 @@ public class PostController {
      * 게시글 작성 API (인증 필요)
      *
      * @param request 게시글 작성 요청 (제목, 내용, 카테고리)
-     * @paramuserId JWT에서 추출한 사용자 ID
+     * @param userId JWT에서 추출한 사용자 ID
      * @return 201 Created + 생성된 게시글 정보
      */
     @PostMapping
     public ResponseEntity<PostResponse> createPost(
-            @Valid @RequestBody PostCreateRequest request)
-        {// @AuthenticationPrincipal String userId) {
+            @Valid @RequestBody PostCreateRequest request,
+            @AuthenticationPrincipal String userId) {
 
-           String userId = "test-user-001";
         log.info("게시글 작성 요청 - userId: {}, category: {}", userId, request.category());
         PostResponse post = postService.createPost(request, userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(post);
@@ -106,6 +113,7 @@ public class PostController {
         PostResponse post = postService.updatePost(id, request, userId);
         return ResponseEntity.ok(post);
     }
+
     /**
      * 게시글 삭제 API (작성자만 가능)
      *
@@ -121,57 +129,5 @@ public class PostController {
         log.info("게시글 삭제 요청 - postId: {}, userId: {}", id, userId);
         postService.deletePost(id, userId);
         return ResponseEntity.noContent().build();
-    }
-    /**임시저장작성
-    @PostMapping("/drafts")
-    public PostResponse createDraft(
-            @RequestBody PostCreateRequest request,
-            @RequestHeader("userId") String userId) {
-
-        return postService.createDraft(request, userId);
-    }*/
-    @PostMapping("/drafts")  // 테스트용
-    public ResponseEntity<PostResponse> createDraft(
-            @RequestBody PostCreateRequest request) {
-
-        String userId = "test-user-001"; // 테스트용
-
-        PostResponse post = postService.createDraft(request, userId);
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(post);
-    }
-    /**임시저장목록*/
-    @GetMapping("/drafts")
-    public Page<PostResponse> getDrafts(
-            Pageable pageable,
-            @RequestHeader("userId") String userId) {
-
-        return postService.getDrafts(userId, pageable);
-    }
-
-    /**임시저장수정*/
-    @PutMapping("/drafts/{id}")
-    public PostResponse updateDraft(
-            @PathVariable Long id,
-            @RequestBody PostCreateRequest request,
-            @RequestHeader("userId") String userId) {
-
-        return postService.updateDraft(id, request, userId);
-    }
-    /**임시저장 삭제*/
-    @DeleteMapping("/drafts/{id}")
-    public void deleteDraft(
-            @PathVariable Long id,
-            @RequestHeader("userId") String userId) {
-
-        postService.deleteDraft(id, userId);
-    }
-    /**임시저장 → 게시*/
-    @PostMapping("/drafts/{id}/publish")
-    public PostResponse publishDraft(
-            @PathVariable Long id,
-            @RequestHeader("userId") String userId) {
-
-        return postService.publishDraft(id, userId);
     }
 }
