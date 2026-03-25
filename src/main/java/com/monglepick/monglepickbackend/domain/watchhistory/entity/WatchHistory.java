@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.watchhistory.entity;
 
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -32,12 +33,18 @@ import java.time.LocalDateTime;
 @Table(name = "watch_history")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class WatchHistory {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — PK 필드명: id → watchHistoryId로 변경 (DDL 컬럼명 watch_history_id 매핑)
+ * — watchedAt은 도메인 고유 필드이므로 유지 (시청 일시)
+ */
+public class WatchHistory extends BaseAuditEntity {
 
-    /** 시청 이력 고유 식별자 */
+    /** 시청 이력 고유 식별자 (PK, BIGINT AUTO_INCREMENT, 컬럼명: watch_history_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "watch_history_id")
+    private Long watchHistoryId;
 
     /** 시청한 사용자 (지연 로딩) */
     @ManyToOne(fetch = FetchType.LAZY)

@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.reward.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -19,6 +20,11 @@ import lombok.NoArgsConstructor;
  * <p>포인트로 교환 가능한 상품(아이템) 정보를 저장한다.
  * 사용자가 보유 포인트를 사용하여 구매할 수 있는 아이템 목록을 관리한다.</p>
  *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseTimeEntity → BaseAuditEntity 변경 (created_by/updated_by 추가)</li>
+ * </ul>
+ *
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code itemName} — 상품명 (필수)</li>
@@ -34,9 +40,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class PointItem extends BaseTimeEntity {
+/* BaseTimeEntity → BaseAuditEntity 변경: created_by, updated_by 컬럼 추가 관리 */
+public class PointItem extends BaseAuditEntity {
 
-    /** 포인트 상품 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 포인트 상품 고유 ID (BIGINT AUTO_INCREMENT PK) — PK 컬럼명 변경 없음 */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "point_item_id")

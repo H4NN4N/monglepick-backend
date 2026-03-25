@@ -1,12 +1,11 @@
 package com.monglepick.monglepickbackend.domain.user.entity;
 
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -25,7 +24,11 @@ import java.time.LocalDateTime;
 @Table(name = "users")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class User {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — 수동 createdAt/updatedAt 필드 및 @PrePersist/@PreUpdate 메서드 제거됨
+ */
+public class User extends BaseAuditEntity {
 
     /** 사용자 고유 식별자 (VARCHAR(50), DDL PK) */
     @Id
@@ -73,13 +76,7 @@ public class User {
     @Column(name = "required_term")
     private Boolean requiredTerm;
 
-    /** 계정 생성 시각 */
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    /** 정보 수정 시각 */
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    /* created_at, updated_at은 BaseAuditEntity(→BaseTimeEntity)에서 자동 관리 — 수동 필드 제거됨 */
 
     /** 로그인 제공자 열거형 */
     public enum Provider {
@@ -103,16 +100,7 @@ public class User {
         this.requiredTerm = requiredTerm != null ? requiredTerm : false;
     }
 
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
+    /* @PrePersist/@PreUpdate 제거됨 — BaseTimeEntity의 @CreationTimestamp/@UpdateTimestamp로 자동 관리 */
 
     /** 닉네임 변경 */
     public void updateNickname(String nickname) {

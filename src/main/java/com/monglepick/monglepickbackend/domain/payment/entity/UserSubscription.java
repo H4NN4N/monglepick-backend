@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.payment.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -28,6 +29,13 @@ import java.time.LocalDateTime;
  * 한 사용자가 동시에 active 구독을 2개 이상 가질 수 없으며,
  * 이 제약은 서비스 레이어에서 검증한다.</p>
  *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseTimeEntity → BaseAuditEntity 변경 (created_by/updated_by 추가)</li>
+ *   <li>2026-03-24: PK 필드명 subscriptionId → userSubscriptionId 로 변경, @Column(name = "user_subscription_id") 추가</li>
+ *   <li>2026-03-24: FK 필드 plan의 @JoinColumn(name = "plan_id") → @JoinColumn(name = "subscription_plan_id") 변경</li>
+ * </ul>
+ *
  * <h3>상태 전이 (State Transition)</h3>
  * <pre>
  * ACTIVE ──→ CANCELLED (사용자 취소 요청, cancelledAt 기록)
@@ -38,7 +46,7 @@ import java.time.LocalDateTime;
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code userId} — 구독자 ID (FK → users.user_id)</li>
- *   <li>{@code plan} — 구독 상품 (FK → subscription_plans.plan_id, LAZY)</li>
+ *   <li>{@code plan} — 구독 상품 (FK → subscription_plans.subscription_plan_id, LAZY)</li>
  *   <li>{@code status} — 구독 상태 (ACTIVE / CANCELLED / EXPIRED)</li>
  *   <li>{@code startedAt} — 구독 시작 시각</li>
  *   <li>{@code expiresAt} — 만료 예정 시각</li>
@@ -69,17 +77,22 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class UserSubscription extends BaseTimeEntity {
+/* BaseTimeEntity → BaseAuditEntity 변경: created_by, updated_by 컬럼 추가 관리 */
+public class UserSubscription extends BaseAuditEntity {
 
     // ──────────────────────────────────────────────
     // PK
     // ──────────────────────────────────────────────
 
-    /** 구독 레코드 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 구독 레코드 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 기존 필드명 'subscriptionId'에서 'userSubscriptionId'로 변경하여 엔티티 식별 명확화.
+     * 기존 컬럼명 'subscription_id'에서 'user_subscription_id'로 변경.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "subscription_id")
-    private Long subscriptionId;
+    @Column(name = "user_subscription_id")
+    private Long userSubscriptionId;
 
     // ──────────────────────────────────────────────
     // FK / 참조 필드
@@ -95,12 +108,12 @@ public class UserSubscription extends BaseTimeEntity {
     private String userId;
 
     /**
-     * 구독 상품 (FK → subscription_plans.plan_id).
+     * 구독 상품 (FK → subscription_plans.subscription_plan_id).
      * LAZY 로딩으로 N+1 쿼리를 방지한다.
-     * DDL의 {@code CONSTRAINT fk_sub_plan}에 대응.
+     * 기존 @JoinColumn(name = "plan_id") → @JoinColumn(name = "subscription_plan_id")로 변경.
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "plan_id", nullable = false)
+    @JoinColumn(name = "subscription_plan_id", nullable = false)
     private SubscriptionPlan plan;
 
     // ──────────────────────────────────────────────

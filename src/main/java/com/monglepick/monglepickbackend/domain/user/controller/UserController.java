@@ -2,8 +2,8 @@ package com.monglepick.monglepickbackend.domain.user.controller;
 
 import com.monglepick.monglepickbackend.domain.user.dto.UserResponse;
 import com.monglepick.monglepickbackend.domain.user.entity.UserPreference;
-import com.monglepick.monglepickbackend.domain.watchhistory.entity.UserWishlist;
-import com.monglepick.monglepickbackend.domain.watchhistory.entity.WatchHistory;
+import com.monglepick.monglepickbackend.domain.watchhistory.dto.WatchHistoryResponse;
+import com.monglepick.monglepickbackend.domain.watchhistory.dto.WishlistResponse;
 import com.monglepick.monglepickbackend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -70,12 +70,12 @@ public class UserController {
      * @return 200 OK + 페이지 단위의 시청 이력
      */
     @GetMapping("/watch-history")
-    public ResponseEntity<Page<WatchHistory>> getWatchHistory(
+    public ResponseEntity<Page<WatchHistoryResponse>> getWatchHistory(
             @AuthenticationPrincipal String userId,
             @PageableDefault(size = 20, sort = "watchedAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
 
-        Page<WatchHistory> history = userService.getWatchHistory(userId, pageable);
+        Page<WatchHistoryResponse> history = userService.getWatchHistory(userId, pageable);
         return ResponseEntity.ok(history);
     }
 
@@ -87,12 +87,12 @@ public class UserController {
      * @return 200 OK + 페이지 단위의 위시리스트
      */
     @GetMapping("/wishlist")
-    public ResponseEntity<Page<UserWishlist>> getWishlist(
+    public ResponseEntity<Page<WishlistResponse>> getWishlist(
             @AuthenticationPrincipal String userId,
             @PageableDefault(size = 20, sort = "addedAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
 
-        Page<UserWishlist> wishlist = userService.getWishlist(userId, pageable);
+        Page<WishlistResponse> wishlist = userService.getWishlist(userId, pageable);
         return ResponseEntity.ok(wishlist);
     }
 

@@ -14,6 +14,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -105,8 +108,9 @@ public class SubscriptionService {
     public SubscriptionStatusResponse getStatus(String userId) {
         log.debug("구독 상태 조회: userId={}", userId);
 
+        // JOIN FETCH로 plan을 즉시 로딩 (N+1 방지)
         Optional<UserSubscription> activeSub = subscriptionRepository
-                .findByUserIdAndStatus(userId, UserSubscription.Status.ACTIVE);
+                .findByUserIdAndStatusFetchPlan(userId, UserSubscription.Status.ACTIVE);
 
         // 활성 구독이 없는 경우
         if (activeSub.isEmpty()) {
@@ -114,10 +118,10 @@ public class SubscriptionService {
             return new SubscriptionStatusResponse(false, null, null, null, null, false);
         }
 
-        // 활성 구독이 있는 경우
+        // 활성 구독이 있는 경우 (plan은 이미 즉시 로딩됨)
         UserSubscription sub = activeSub.get();
         log.debug("활성 구독 발견: userId={}, planId={}, expiresAt={}",
-                userId, sub.getPlan().getPlanId(), sub.getExpiresAt());
+                userId, sub.getPlan().getSubscriptionPlanId(), sub.getExpiresAt());
 
         return new SubscriptionStatusResponse(
                 true,
@@ -205,21 +209,19 @@ public class SubscriptionService {
     public void cancelSubscription(String userId) {
         log.info("구독 취소 시작: userId={}", userId);
 
+        // JOIN FETCH로 plan을 즉시 로딩 (N+1 방지)
         UserSubscription sub = subscriptionRepository
-                .findByUserIdAndStatus(userId, UserSubscription.Status.ACTIVE)
+                .findByUserIdAndStatusFetchPlan(userId, UserSubscription.Status.ACTIVE)
                 .orElseThrow(() -> {
                     log.error("활성 구독 없음 (취소 실패): userId={}", userId);
-                    return new BusinessException(
-                            ErrorCode.ORDER_NOT_FOUND,
-                            "활성 구독이 없습니다"
-                    );
+                    return new BusinessException(ErrorCode.SUBSCRIPTION_NOT_FOUND);
                 });
 
         // 도메인 메서드: status=CANCELLED, autoRenew=false, cancelledAt=now
         sub.cancel();
 
         log.info("구독 취소 완료: userId={}, subscriptionId={}, expiresAt={}",
-                userId, sub.getSubscriptionId(), sub.getExpiresAt());
+                userId, sub.getUserSubscriptionId(), sub.getExpiresAt());
     }
 
     // ──────────────────────────────────────────────
@@ -249,35 +251,37 @@ public class SubscriptionService {
         log.info("만료 구독 처리 시작 (스케줄러)");
 
         LocalDateTime now = LocalDateTime.now();
+        int totalProcessed = 0;
+        int totalErrors = 0;
 
-        // 만료일이 지났고 자동갱신이 활성화된 ACTIVE 구독 조회
-        List<UserSubscription> expiredSubs = subscriptionRepository
-                .findByStatusAndExpiresAtBeforeAndAutoRenewTrue(
-                        UserSubscription.Status.ACTIVE, now);
+        // 100건씩 페이징하여 만료 구독 처리 (OOM 방지)
+        // 처리 후 상태가 EXPIRED로 변경되므로 항상 page 0을 조회한다.
+        Page<UserSubscription> page;
+        do {
+            page = subscriptionRepository.findExpiredWithPlan(
+                    UserSubscription.Status.ACTIVE, now, PageRequest.of(0, 100));
 
-        if (expiredSubs.isEmpty()) {
-            log.info("만료 대상 구독 없음");
-            return;
-        }
-
-        log.info("만료 대상 구독 {}건 발견", expiredSubs.size());
-
-        // 각 구독을 만료 처리
-        for (UserSubscription sub : expiredSubs) {
-            try {
-                // TODO: PG 정기결제(빌링키) 연동 시 자동 갱신 시도 로직 추가.
-                //       현재는 단순 만료 처리만 수행한다.
-                log.warn("구독 만료 처리: userId={}, planId={}, expiresAt={}",
-                        sub.getUserId(), sub.getPlan().getPlanId(), sub.getExpiresAt());
-                sub.expire();
-            } catch (Exception e) {
-                // 개별 구독 처리 실패 시 다른 구독 처리를 계속하기 위해 예외를 잡음
-                log.error("구독 만료 처리 실패: subscriptionId={}, error={}",
-                        sub.getSubscriptionId(), e.getMessage(), e);
+            if (page.isEmpty() && totalProcessed == 0) {
+                log.info("만료 대상 구독 없음");
+                return;
             }
-        }
 
-        log.info("만료 구독 처리 완료: 처리 {}건", expiredSubs.size());
+            for (UserSubscription sub : page.getContent()) {
+                try {
+                    // TODO: PG 정기결제(빌링키) 연동 시 자동 갱신 시도 로직 추가.
+                    log.warn("구독 만료 처리: userId={}, planId={}, expiresAt={}",
+                            sub.getUserId(), sub.getPlan().getSubscriptionPlanId(), sub.getExpiresAt());
+                    sub.expire();
+                    totalProcessed++;
+                } catch (Exception e) {
+                    totalErrors++;
+                    log.error("구독 만료 처리 실패: subscriptionId={}, error={}",
+                            sub.getUserSubscriptionId(), e.getMessage(), e);
+                }
+            }
+        } while (page.hasContent());
+
+        log.info("만료 구독 처리 완료: 성공 {}건, 실패 {}건", totalProcessed, totalErrors);
     }
 
     // ──────────────────────────────────────────────
@@ -292,7 +296,7 @@ public class SubscriptionService {
      */
     private SubscriptionPlanResponse toPlanResponse(SubscriptionPlan plan) {
         return new SubscriptionPlanResponse(
-                plan.getPlanId(),
+                plan.getSubscriptionPlanId(),
                 plan.getPlanCode(),
                 plan.getName(),
                 plan.getPeriodType().name(),

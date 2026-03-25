@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.roadmap.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity로 변경 — created_at/updated_at에 더해 created_by/updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -30,7 +31,13 @@ import lombok.NoArgsConstructor;
  *   <li>{@code movieCount} — 코스 내 영화 수 (필수)</li>
  *   <li>{@code difficulty} — 난이도 (beginner, intermediate, advanced)</li>
  *   <li>{@code quizEnabled} — 퀴즈 활성화 여부</li>
- *   <li>{@code createdBy} — 코스 생성자 (기본값: "ai_agent")</li>
+ * </ul>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>PK 필드명: id → roadmapCourseId (컬럼명: roadmap_course_id)</li>
+ *   <li>BaseTimeEntity → BaseAuditEntity로 변경 (created_by/updated_by 추가)</li>
+ *   <li>수동 createdBy 필드 제거 — BaseAuditEntity에서 상속 (AuditorAware 자동 주입)</li>
  * </ul>
  */
 @Entity
@@ -39,12 +46,16 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class RoadmapCourse extends BaseTimeEntity {
+public class RoadmapCourse extends BaseAuditEntity {
 
-    /** 코스 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 코스 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 필드명 변경: id → roadmapCourseId (엔티티 PK 네이밍 통일)
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "roadmap_course_id")
+    private Long roadmapCourseId;
 
     /**
      * 코스 고유 식별자 (UNIQUE).
@@ -100,14 +111,9 @@ public class RoadmapCourse extends BaseTimeEntity {
     @Builder.Default
     private Boolean quizEnabled = false;
 
-    /**
-     * 코스 생성자.
-     * 기본값: "ai_agent" (AI가 자동 생성).
-     * 관리자가 수동 생성 시 관리자 ID가 입력된다.
-     */
-    @Column(name = "created_by", length = 50)
-    @Builder.Default
-    private String createdBy = "ai_agent";
+    /* createdBy 수동 필드 제거 — BaseAuditEntity에서 @CreatedBy로 자동 관리 */
+    /* created_at, updated_at → BaseTimeEntity에서 상속 */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 
     /**
      * 코스 난이도 열거형.

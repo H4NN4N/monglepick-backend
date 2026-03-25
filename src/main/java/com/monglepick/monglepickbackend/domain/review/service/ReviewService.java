@@ -10,6 +10,8 @@ import com.monglepick.monglepickbackend.domain.review.repository.ReviewRepositor
 import com.monglepick.monglepickbackend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,20 +65,20 @@ public class ReviewService {
 
         Review savedReview = reviewRepository.save(review);
         log.info("리뷰 작성 완료 - reviewId: {}, userId: {}, movieId: {}",
-                savedReview.getId(), userId, movieId);
+                savedReview.getReviewId(), userId, movieId);  /* PK 필드명 변경: getId() → getReviewId() */
 
         return ReviewResponse.from(savedReview);
     }
 
     /**
-     * 특정 영화의 리뷰 목록을 조회합니다.
+     * 특정 영화의 리뷰 목록을 페이징으로 조회합니다.
      *
-     * @param movieId 영화 ID
-     * @return 리뷰 목록
+     * @param movieId  영화 ID
+     * @param pageable 페이징 정보
+     * @return 페이지 단위의 리뷰 목록
      */
-    public List<ReviewResponse> getReviewsByMovie(String movieId) {
-        return reviewRepository.findByMovieId(movieId).stream()
-                .map(ReviewResponse::from)
-                .toList();
+    public Page<ReviewResponse> getReviewsByMovie(String movieId, Pageable pageable) {
+        return reviewRepository.findByMovieId(movieId, pageable)
+                .map(ReviewResponse::from);
     }
 }

@@ -1,5 +1,7 @@
 package com.monglepick.monglepickbackend.domain.content.entity;
 
+/* BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -11,9 +13,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 
 /**
  * 유해성 검출 로그 엔티티 — toxicity_log 테이블 매핑.
@@ -39,6 +38,13 @@ import java.time.LocalDateTime;
  *   <li>{@code warned} — 경고 메시지 표시</li>
  *   <li>{@code filtered} — 유해 부분만 필터링</li>
  * </ul>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>PK 필드명: id → toxicityLogId (컬럼명: toxicity_log_id)</li>
+ *   <li>BaseAuditEntity 상속 추가 — created_at/updated_at/created_by/updated_by 자동 관리</li>
+ *   <li>수동 createdAt 필드 및 @CreationTimestamp 제거 — BaseTimeEntity에서 상속</li>
+ * </ul>
  */
 @Entity
 @Table(name = "toxicity_log")
@@ -46,12 +52,16 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class ToxicityLog {
+public class ToxicityLog extends BaseAuditEntity {
 
-    /** 유해성 로그 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 유해성 로그 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 필드명 변경: id → toxicityLogId (엔티티 PK 네이밍 통일)
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "toxicity_log_id")
+    private Long toxicityLogId;
 
     /**
      * 입력 사용자 ID (VARCHAR(50)).
@@ -96,8 +106,6 @@ public class ToxicityLog {
     @Builder.Default
     private String actionTaken = "flagged";
 
-    /** 로그 생성 시각 */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at, updated_at → BaseTimeEntity에서 상속 */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 }

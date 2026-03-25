@@ -1,5 +1,7 @@
 package com.monglepick.monglepickbackend.domain.reward.entity;
 
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -11,15 +13,19 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 
 /**
  * 포인트 변동 이력 엔티티 — points_history 테이블 매핑.
  *
  * <p>포인트의 모든 변동(획득, 사용, 만료, 보너스)을 기록한다.
  * 각 레코드는 변동량, 변동 후 잔액, 변동 사유를 포함한다.</p>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseAuditEntity 상속 추가 (created_at/updated_at/created_by/updated_by 자동 관리)</li>
+ *   <li>2026-03-24: PK 필드명 pointHistoryId → pointsHistoryId 로 변경, @Column(name = "points_history_id") 추가</li>
+ *   <li>2026-03-24: 수동 createdAt (@CreationTimestamp) 필드 제거 — BaseAuditEntity가 created_at 자동 관리</li>
+ * </ul>
  *
  * <h3>주요 필드</h3>
  * <ul>
@@ -30,10 +36,6 @@ import java.time.LocalDateTime;
  *   <li>{@code description} — 변동 사유 설명</li>
  *   <li>{@code referenceId} — 외부 참조 ID (주문번호 등)</li>
  * </ul>
- *
- * <h3>타임스탬프</h3>
- * <p>created_at만 존재하며 updated_at은 없다 (이력 불변).
- * BaseTimeEntity를 상속하지 않고 {@code @CreationTimestamp}를 직접 사용한다.</p>
  */
 @Entity
 @Table(name = "points_history")
@@ -41,13 +43,18 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class PointsHistory {
+/* BaseAuditEntity 상속 추가: created_at, updated_at, created_by, updated_by 컬럼 자동 관리 */
+public class PointsHistory extends BaseAuditEntity {
 
-    /** 포인트 이력 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 포인트 이력 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 기존 필드명 'pointHistoryId'에서 'pointsHistoryId'로 변경하여 엔티티명과 일치시킴.
+     * 기존 컬럼명 'point_history_id'에서 'points_history_id'로 변경.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "point_history_id")
-    private Long pointHistoryId;
+    @Column(name = "points_history_id")
+    private Long pointsHistoryId;
 
     /**
      * 사용자 ID (VARCHAR(50), NOT NULL).
@@ -91,11 +98,5 @@ public class PointsHistory {
     @Column(name = "reference_id", length = 100)
     private String referenceId;
 
-    /**
-     * 레코드 생성 시각.
-     * INSERT 시 자동 설정되며 이후 변경되지 않는다.
-     */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* 수동 createdAt 필드 제거됨 — BaseAuditEntity가 created_at 컬럼을 자동 관리 */
 }

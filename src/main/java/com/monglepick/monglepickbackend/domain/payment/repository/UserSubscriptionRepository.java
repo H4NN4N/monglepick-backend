@@ -1,7 +1,11 @@
 package com.monglepick.monglepickbackend.domain.payment.repository;
 
 import com.monglepick.monglepickbackend.domain.payment.entity.UserSubscription;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -77,4 +81,29 @@ public interface UserSubscriptionRepository extends JpaRepository<UserSubscripti
      * @return 구독 이력 목록 (최신순 정렬)
      */
     List<UserSubscription> findByUserIdOrderByCreatedAtDesc(String userId);
+
+    /**
+     * 사용자의 특정 상태 구독을 plan과 함께 조회한다 (N+1 방지).
+     *
+     * <p>plan 정보에 접근하는 getStatus(), cancelSubscription()에서 사용한다.
+     * JOIN FETCH로 plan을 즉시 로딩하여 추가 쿼리를 방지한다.</p>
+     */
+    @Query("SELECT s FROM UserSubscription s JOIN FETCH s.plan WHERE s.userId = :userId AND s.status = :status")
+    Optional<UserSubscription> findByUserIdAndStatusFetchPlan(
+            @Param("userId") String userId, @Param("status") UserSubscription.Status status);
+
+    /**
+     * 만료된 구독을 plan과 함께 페이징으로 조회한다 (OOM + N+1 방지).
+     *
+     * <p>스케줄러에서 배치 처리 시 사용한다. 100건씩 페이징하여
+     * 대량 만료 구독이 있어도 메모리를 안전하게 유지한다.</p>
+     */
+    @Query(value = "SELECT s FROM UserSubscription s JOIN FETCH s.plan " +
+            "WHERE s.status = :status AND s.expiresAt < :now AND s.autoRenew = true",
+            countQuery = "SELECT COUNT(s) FROM UserSubscription s " +
+                    "WHERE s.status = :status AND s.expiresAt < :now AND s.autoRenew = true")
+    Page<UserSubscription> findExpiredWithPlan(
+            @Param("status") UserSubscription.Status status,
+            @Param("now") LocalDateTime now,
+            Pageable pageable);
 }

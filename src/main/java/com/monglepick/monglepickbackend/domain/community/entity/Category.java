@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.community.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity로 변경 — created_at/updated_at에 더해 created_by/updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -22,12 +23,18 @@ import lombok.NoArgsConstructor;
  *
  * <h3>주요 필드</h3>
  * <ul>
- *   <li>{@code categoryId} — 카테고리 고유 ID (PK)</li>
+ *   <li>{@code categoryId} — 카테고리 고유 ID (PK, 변경 없음)</li>
  *   <li>{@code upCategory} — 상위 카테고리명 (UNIQUE)</li>
  * </ul>
  *
  * <h3>제약조건</h3>
  * <p>UNIQUE(up_category) — 상위 카테고리명은 중복될 수 없다.</p>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>BaseTimeEntity → BaseAuditEntity로 변경 (created_by/updated_by 추가)</li>
+ *   <li>PK 필드(categoryId)는 이미 올바른 네이밍이므로 변경 없음</li>
+ * </ul>
  */
 @Entity
 @Table(
@@ -38,9 +45,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class Category extends BaseTimeEntity {
+public class Category extends BaseAuditEntity {
 
-    /** 카테고리 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 카테고리 고유 ID (BIGINT AUTO_INCREMENT PK, 변경 없음) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "category_id")
@@ -52,4 +59,7 @@ public class Category extends BaseTimeEntity {
      */
     @Column(name = "up_category", length = 100, nullable = false)
     private String upCategory;
+
+    /* created_at, updated_at → BaseTimeEntity에서 상속 */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 }

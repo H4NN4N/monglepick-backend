@@ -16,34 +16,21 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.monglepick.monglepickbackend.global.exception.BusinessException;
+import com.monglepick.monglepickbackend.global.exception.ErrorCode;
+
+import java.security.Principal;
+
 /**
  * 결제 API 컨트롤러 — Toss Payments 결제 주문 생성, 승인, 내역 조회, 웹훅 처리.
  *
- * <p>클라이언트(monglepick-client)가 호출하는 결제 REST API 4개를 제공한다.</p>
- *
- * <h3>API 엔드포인트</h3>
- * <table>
- *   <tr><th>메서드</th><th>경로</th><th>설명</th></tr>
- *   <tr><td>POST</td><td>/api/v1/payment/orders</td><td>결제 주문 생성 (PENDING)</td></tr>
- *   <tr><td>POST</td><td>/api/v1/payment/confirm</td><td>결제 승인 + 포인트 지급</td></tr>
- *   <tr><td>GET</td><td>/api/v1/payment/orders</td><td>결제 내역 조회 (페이징)</td></tr>
- *   <tr><td>POST</td><td>/api/v1/payment/webhook</td><td>Toss 웹훅 수신 (향후 확장)</td></tr>
- * </table>
- *
- * <h3>결제 플로우</h3>
- * <pre>
- * 1. 클라이언트 → POST /orders       → orderId + clientKey 발급
- * 2. 클라이언트 → Toss 결제창 호출     → 사용자 결제 완료 → paymentKey 수신
- * 3. 클라이언트 → POST /confirm       → Toss 승인 + 포인트 지급
- * </pre>
- *
- * <h3>인증</h3>
- * <p>현재는 userId를 요청 Body/Param으로 직접 받지만,
- * 향후 JWT {@code @AuthenticationPrincipal}로 교체할 예정이다.</p>
+ * <p>클라이언트(monglepick-client)가 호출하는 결제 REST API 4개를 제공한다.
+ * JWT 인증 기반으로 Principal에서 userId를 추출한다.</p>
  *
  * @see PaymentService 결제 비즈니스 로직
  */
@@ -94,11 +81,15 @@ public class PaymentController {
      */
     @PostMapping("/orders")
     public ResponseEntity<OrderResponse> createOrder(
-            @Valid @RequestBody CreateOrderRequest request) {
-        log.info("주문 생성 API 호출: userId={}, orderType={}, amount={}",
-                request.userId(), request.orderType(), request.amount());
+            Principal principal,
+            @Valid @RequestBody CreateOrderRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        // JWT에서 userId를 추출하여 사용 (request body의 userId 무시 — BOLA 방지)
+        String userId = resolveUserId(principal);
+        log.info("주문 생성 API 호출: userId={}, orderType={}, amount={}, idempotencyKey={}",
+                userId, request.orderType(), request.amount(), idempotencyKey);
 
-        OrderResponse response = paymentService.createOrder(request);
+        OrderResponse response = paymentService.createOrder(userId, request, idempotencyKey);
         return ResponseEntity.ok(response);
     }
 
@@ -139,10 +130,13 @@ public class PaymentController {
      */
     @PostMapping("/confirm")
     public ResponseEntity<ConfirmResponse> confirmPayment(
+            Principal principal,
             @Valid @RequestBody ConfirmRequest request) {
-        log.info("결제 승인 API 호출: orderId={}, amount={}", request.orderId(), request.amount());
+        // JWT에서 userId 추출 — 주문 소유자 검증에 사용 (BOLA 방지)
+        String userId = resolveUserId(principal);
+        log.info("결제 승인 API 호출: userId={}, orderId={}, amount={}", userId, request.orderId(), request.amount());
 
-        ConfirmResponse response = paymentService.confirmPayment(request);
+        ConfirmResponse response = paymentService.confirmPayment(userId, request);
         return ResponseEntity.ok(response);
     }
 
@@ -169,13 +163,16 @@ public class PaymentController {
      */
     @GetMapping("/orders")
     public ResponseEntity<Page<OrderHistoryResponse>> getOrders(
-            @RequestParam String userId,
+            Principal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String userId = resolveUserId(principal);
         log.debug("결제 내역 조회 API 호출: userId={}, page={}, size={}", userId, page, size);
 
+        // 페이지 크기 상한 제한 (과도한 요청으로 인한 DB 과부하 방지)
+        int safeSize = Math.min(size, 100);
         Page<OrderHistoryResponse> orders = paymentService.getOrderHistory(
-                userId, PageRequest.of(page, size));
+                userId, PageRequest.of(page, safeSize));
         return ResponseEntity.ok(orders);
     }
 
@@ -204,9 +201,25 @@ public class PaymentController {
      */
     @PostMapping("/webhook")
     public ResponseEntity<Void> handleWebhook(
-            @RequestBody PaymentDto.TossWebhookPayload payload) {
-        // TODO: 운영 환경에서 Toss 웹훅 서명 검증 추가
-        log.info("Toss 웹훅 수신: eventType={}", payload.eventType());
+            @RequestBody String rawBody,
+            @RequestHeader(value = "TossPayments-Signature", required = false) String signature) {
+        // 웹훅 서명 검증 (운영 환경에서 위변조 방지)
+        paymentService.verifyAndProcessWebhook(rawBody, signature);
         return ResponseEntity.ok().build();
+    }
+
+    // ──────────────────────────────────────────────
+    // private 헬퍼
+    // ──────────────────────────────────────────────
+
+    /**
+     * Principal에서 userId를 안전하게 추출한다.
+     * null인 경우 UNAUTHORIZED 예외를 던진다 (NPE 방지).
+     */
+    private String resolveUserId(Principal principal) {
+        if (principal == null || principal.getName() == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        return principal.getName();
     }
 }

@@ -1,12 +1,21 @@
 package com.monglepick.monglepickbackend.global.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.monglepick.monglepickbackend.domain.auth.filter.LoginFilter;
+import com.monglepick.monglepickbackend.domain.auth.handler.LoginSuccessHandler;
+import com.monglepick.monglepickbackend.domain.auth.handler.RefreshTokenLogoutHandler;
+import com.monglepick.monglepickbackend.domain.auth.handler.SocialFailureHandler;
+import com.monglepick.monglepickbackend.domain.auth.handler.SocialSuccessHandler;
+import com.monglepick.monglepickbackend.domain.auth.service.JwtService;
 import com.monglepick.monglepickbackend.global.exception.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -14,6 +23,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.logout.LogoutFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -25,78 +35,60 @@ import java.util.Map;
 /**
  * Spring Security 전역 보안 설정.
  *
- * <p>몽글픽 백엔드의 보안 정책을 정의한다.
- * REST API 서버이므로 세션을 사용하지 않고(STATELESS),
- * CSRF를 비활성화하며, 모든 인증은 토큰 기반으로 처리한다.</p>
+ * <p>KMG 프로젝트의 SecurityConfig 패턴을 적용하여
+ * Spring Security OAuth2 Client + JWT 필터 + 서비스키 필터를 통합한다.</p>
  *
- * <h3>인증 체계 (2단계)</h3>
+ * <h3>인증 체계 (3단계)</h3>
  * <ol>
- *   <li><b>JWT 인증</b> ({@link JwtAuthenticationFilter}):
- *       클라이언트(브라우저)가 {@code Authorization: Bearer {token}} 헤더로 인증</li>
- *   <li><b>서비스 키 인증</b> ({@link ServiceKeyAuthFilter}):
- *       AI Agent 등 내부 서비스가 {@code X-Service-Key} 헤더로 인증</li>
+ *   <li><b>JWT 인증</b> ({@link JwtAuthenticationFilter}): Bearer 토큰 검증</li>
+ *   <li><b>서비스 키 인증</b> ({@link ServiceKeyAuthFilter}): AI Agent 내부 통신</li>
+ *   <li><b>OAuth2 로그인</b>: Spring Security OAuth2 Client (Google/Kakao/Naver)</li>
  * </ol>
  *
  * <h3>필터 체인 순서</h3>
- * <p>JwtAuthenticationFilter → ServiceKeyAuthFilter → UsernamePasswordAuthenticationFilter</p>
- *
- * <h3>CORS 정책</h3>
- * <p>프론트엔드(monglepick-client)의 localhost:3000/5173 개발 서버와
- * 운영 도메인에서의 API 접근을 허용한다.
- * 운영 환경에서는 {@code CORS_ALLOWED_ORIGINS} 환경변수로 오버라이드한다.</p>
- *
- * @see JwtAuthenticationFilter
- * @see ServiceKeyAuthFilter
- * @see JwtTokenProvider
+ * <p>JwtAuthenticationFilter → (before LogoutFilter)
+ *    → LoginFilter → (before UsernamePasswordAuthenticationFilter)
+ *    → ServiceKeyAuthFilter → UsernamePasswordAuthenticationFilter</p>
  */
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    /** JWT 토큰 생성/검증 프로바이더 (생성자 주입) */
     private final JwtTokenProvider jwtTokenProvider;
+    private final LoginSuccessHandler loginSuccessHandler;
+    private final SocialSuccessHandler socialSuccessHandler;
+    private final SocialFailureHandler socialFailureHandler;
+    private final JwtService jwtService;
 
-    /**
-     * 서비스 간 내부 통신용 API 키.
-     * application.yml의 {@code app.service.key} 또는
-     * 환경변수 {@code SERVICE_API_KEY}에서 주입받는다.
-     */
     @Value("${app.service.key:dev-service-key-change-me}")
     private String serviceKey;
 
-    // ── CORS 관련 설정값 (application.yml에서 주입) ──
-
-    /** 허용할 Origin 목록 (쉼표 구분 문자열) */
     @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
     private String allowedOrigins;
 
-    /** 허용할 HTTP 메서드 목록 (쉼표 구분 문자열) */
     @Value("${cors.allowed-methods:GET,POST,PUT,PATCH,DELETE,OPTIONS}")
     private String allowedMethods;
 
-    /** 허용할 HTTP 헤더 목록 (쉼표 구분 문자열, "*"이면 모든 헤더 허용) */
     @Value("${cors.allowed-headers:*}")
     private String allowedHeaders;
 
-    /** 자격증명(쿠키, Authorization 헤더) 포함 허용 여부 */
     @Value("${cors.allow-credentials:true}")
     private boolean allowCredentials;
 
-    /** Preflight 요청 캐시 시간 (초) */
     @Value("${cors.max-age:3600}")
     private long maxAge;
 
-    /** 401 응답 시 JSON 직렬화를 위한 ObjectMapper (스레드 안전, 재사용) */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**
-     * 비밀번호 암호화를 위한 BCrypt PasswordEncoder 빈.
-     *
-     * <p>회원가입 시 비밀번호 해싱, 로그인 시 비밀번호 검증에 사용된다.</p>
-     *
-     * @return BCryptPasswordEncoder 인스턴스
+     * AuthenticationManager 빈 등록 (LoginFilter에서 사용).
      */
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
+        return configuration.getAuthenticationManager();
+    }
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -105,91 +97,109 @@ public class SecurityConfig {
     /**
      * Spring Security 필터 체인 설정.
      *
-     * <p>HTTP 보안 정책의 핵심 구성을 정의한다:</p>
-     * <ul>
-     *   <li>CSRF 비활성화 (REST API, 세션 미사용)</li>
-     *   <li>세션 정책: STATELESS (JWT/서비스키 기반 인증)</li>
-     *   <li>CORS: {@link #corsConfigurationSource()}에서 정의한 정책 적용</li>
-     *   <li>폼 로그인, HTTP Basic 비활성화</li>
-     *   <li>JwtAuthenticationFilter → ServiceKeyAuthFilter → UsernamePasswordAuthenticationFilter 순서 배치</li>
-     *   <li>인증 실패 시 401 JSON 응답 반환</li>
-     * </ul>
-     *
-     * @param http Spring Security의 HttpSecurity 빌더
-     * @return 구성 완료된 SecurityFilterChain
-     * @throws Exception 보안 설정 중 발생하는 예외
+     * <p>KMG 패턴 적용: OAuth2 로그인 + LoginFilter + JWT 필터 + 로그아웃 핸들러</p>
      */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                            AuthenticationManager authenticationManager) throws Exception {
         http
-                // ── CSRF 비활성화 (REST API, 세션 미사용이므로 CSRF 불필요) ──
+                /* CSRF 비활성화 (REST API) */
                 .csrf(csrf -> csrf.disable())
 
-                // ── 세션 관리: STATELESS (서버에 세션을 저장하지 않음) ──
+                /* 세션: IF_REQUIRED (OAuth2 흐름에서 세션이 필요) */
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                        session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
 
-                // ── CORS 설정 적용 ──
+                /* CORS 설정 */
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // ── 폼 로그인 비활성화 (REST API이므로 로그인 페이지 불필요) ──
+                /* 폼 로그인 비활성화 (LoginFilter로 대체) */
                 .formLogin(formLogin -> formLogin.disable())
 
-                // ── HTTP Basic 인증 비활성화 (토큰 기반 인증 사용) ──
+                /* HTTP Basic 비활성화 */
                 .httpBasic(httpBasic -> httpBasic.disable())
 
-                // ── URL별 접근 권한 설정 ──
-                .authorizeHttpRequests(authorize -> authorize
-                        // 헬스체크: 인증 없이 접근 가능
-                        .requestMatchers("GET", "/health").permitAll()
+                /* OAuth2 소셜 로그인 설정 (KMG 패턴) */
+                .oauth2Login(oauth2 -> oauth2
+                        .successHandler(socialSuccessHandler)
+                        .failureHandler(socialFailureHandler)
+                )
 
-                        // 인증 API: 로그인, 회원가입, OAuth, 토큰 갱신 등 인증 없이 접근 가능
+                /* 로그아웃 — Refresh Token DB 삭제 핸들러 등록 */
+                .logout(logout -> logout
+                        .addLogoutHandler(new RefreshTokenLogoutHandler(jwtService, jwtTokenProvider))
+                )
+
+                /* URL별 접근 권한 설정 */
+                .authorizeHttpRequests(authorize -> authorize
+                        /* 헬스체크 */
+                        .requestMatchers(HttpMethod.GET, "/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/**").permitAll()
+
+                        /* 인증 API (회원가입, 로그인 등) */
                         .requestMatchers("/api/v1/auth/**").permitAll()
 
-                        // 결제 웹훅: PG사에서 직접 호출하므로 인증 불필요
-                        .requestMatchers("POST", "/api/v1/payment/webhook").permitAll()
+                        /* JWT 토큰 교환/갱신 (KMG 패턴) */
+                        .requestMatchers("/jwt/exchange", "/jwt/refresh").permitAll()
 
-                        // 구독 플랜 조회: 비로그인 사용자도 플랜 확인 가능
-                        .requestMatchers("GET", "/api/v1/subscription/plans").permitAll()
+                        /* OAuth2 흐름 경로 */
+                        .requestMatchers("/oauth2/authorization/**", "/login/oauth2/code/**").permitAll()
+                        .requestMatchers("/login", "/login/**").permitAll()
 
-                        // 포인트 API: ServiceKeyAuthFilter가 X-Service-Key 인증 처리
-                        // 클라이언트 호출은 JWT 인증 필요 (점진적 마이그레이션을 위해 현재 permitAll 유지)
-                        .requestMatchers("/api/v1/point/**").permitAll()
+                        /* 결제 웹훅 */
+                        .requestMatchers(HttpMethod.POST, "/api/v1/payment/webhook").permitAll()
 
-                        // 결제 API: 점진적 마이그레이션을 위해 현재 permitAll 유지
-                        .requestMatchers("/api/v1/payment/**").permitAll()
+                        /* 구독 플랜 조회 */
+                        .requestMatchers(HttpMethod.GET, "/api/v1/subscription/plans").permitAll()
 
-                        // 구독 API: 점진적 마이그레이션을 위해 현재 permitAll 유지
-                        .requestMatchers("/api/v1/subscription/**").permitAll()
+                        /* 게시글 조회는 비로그인 허용 */
+                        .requestMatchers(HttpMethod.GET, "/api/v1/posts/**").permitAll()
 
-                        // 나머지 모든 요청: 인증 필요
+                        /* 나머지 모든 요청: 인증 필요 */
                         .anyRequest().authenticated()
                 )
 
-                // ── 필터 체인 등록 순서 ──
-                // JWT 필터 → 서비스 키 필터 → UsernamePasswordAuthenticationFilter
-                // JWT 필터가 먼저 Authorization 헤더를 확인하고,
-                // 서비스 키 필터가 X-Service-Key 헤더를 확인한다.
+                /* 필터 체인 등록 (KMG 패턴 + 기존 ServiceKeyAuthFilter 유지) */
+
+                /* 1. JwtAuthenticationFilter → LogoutFilter 앞에 배치 */
+                .addFilterBefore(
+                        new JwtAuthenticationFilter(jwtTokenProvider),
+                        LogoutFilter.class
+                )
+
+                /* 2. LoginFilter → UsernamePasswordAuthenticationFilter 앞에 배치 */
+                .addFilterBefore(
+                        new LoginFilter(authenticationManager, loginSuccessHandler),
+                        UsernamePasswordAuthenticationFilter.class
+                )
+
+                /* 3. ServiceKeyAuthFilter → UsernamePasswordAuthenticationFilter 앞에 배치 */
                 .addFilterBefore(
                         new ServiceKeyAuthFilter(serviceKey),
                         UsernamePasswordAuthenticationFilter.class
                 )
-                .addFilterBefore(
-                        new JwtAuthenticationFilter(jwtTokenProvider),
-                        ServiceKeyAuthFilter.class
-                )
 
-                // ── 인증 실패 처리 (401 Unauthorized JSON 응답) ──
+                /* 인증 실패 처리 (401 JSON) */
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                             response.setContentType("application/json;charset=UTF-8");
 
-                            // ErrorCode.UNAUTHORIZED(S002)와 일치하는 에러 코드 사용
                             ErrorResponse errorResponse = new ErrorResponse(
                                     "S002",
                                     "인증이 필요합니다. 로그인 후 다시 시도해주세요.",
+                                    Map.of()
+                            );
+                            OBJECT_MAPPER.writeValue(response.getWriter(), errorResponse);
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json;charset=UTF-8");
+
+                            ErrorResponse errorResponse = new ErrorResponse(
+                                    "S002",
+                                    "접근 권한이 없습니다.",
                                     Map.of()
                             );
                             OBJECT_MAPPER.writeValue(response.getWriter(), errorResponse);
@@ -200,60 +210,30 @@ public class SecurityConfig {
     }
 
     /**
-     * CORS(Cross-Origin Resource Sharing) 설정 소스.
+     * CORS 설정 소스.
      *
-     * <p>프론트엔드(monglepick-client)에서 백엔드 API로의 교차 출처 요청을 허용한다.
-     * application.yml의 {@code cors.*} 속성에서 설정값을 읽어온다.</p>
-     *
-     * <h3>기본 허용 Origin (개발 환경)</h3>
-     * <ul>
-     *   <li>{@code http://localhost:3000} — React 개발 서버 (CRA)</li>
-     *   <li>{@code http://localhost:5173} — Vite 개발 서버</li>
-     * </ul>
-     *
-     * <h3>운영 환경 오버라이드</h3>
-     * <pre>{@code
-     * CORS_ALLOWED_ORIGINS=https://monglepick.com,https://www.monglepick.com
-     * }</pre>
-     *
-     * @return CORS 설정이 등록된 UrlBasedCorsConfigurationSource
+     * <p>Set-Cookie 헤더를 ExposedHeaders에 추가하여
+     * OAuth2 쿠키 교환이 가능하도록 한다.</p>
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 허용 Origin 설정 (쉼표 구분 문자열 → 리스트 변환)
-        configuration.setAllowedOrigins(
-                Arrays.asList(allowedOrigins.split(","))
-        );
+        configuration.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+        configuration.setAllowedMethods(Arrays.asList(allowedMethods.split(",")));
 
-        // 허용 HTTP 메서드 설정
-        configuration.setAllowedMethods(
-                Arrays.asList(allowedMethods.split(","))
-        );
-
-        // 허용 헤더 설정 ("*"이면 모든 헤더 허용)
         if ("*".equals(allowedHeaders)) {
             configuration.setAllowedHeaders(List.of("*"));
         } else {
-            configuration.setAllowedHeaders(
-                    Arrays.asList(allowedHeaders.split(","))
-            );
+            configuration.setAllowedHeaders(Arrays.asList(allowedHeaders.split(",")));
         }
 
-        // 자격증명(쿠키, Authorization 헤더) 포함 허용
         configuration.setAllowCredentials(allowCredentials);
-
-        // Preflight 요청 캐시 시간 (초)
         configuration.setMaxAge(maxAge);
 
-        // 응답에서 클라이언트가 접근 가능한 헤더 목록
-        // (X-Service-Key는 서버간 내부 통신 전용이므로 클라이언트에 노출하지 않음)
-        configuration.setExposedHeaders(
-                List.of("Authorization")
-        );
+        /* Authorization + Set-Cookie 헤더를 클라이언트에 노출 (KMG 패턴) */
+        configuration.setExposedHeaders(List.of("Authorization", "Set-Cookie"));
 
-        // 모든 경로(/**)에 위 CORS 설정 적용
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
 

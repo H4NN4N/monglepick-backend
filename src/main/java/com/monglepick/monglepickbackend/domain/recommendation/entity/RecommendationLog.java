@@ -2,6 +2,7 @@ package com.monglepick.monglepickbackend.domain.recommendation.entity;
 
 import com.monglepick.monglepickbackend.domain.movie.entity.Movie;
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,9 +17,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 
 /**
  * 추천 로그 엔티티 — recommendation_log 테이블 매핑.
@@ -44,12 +42,18 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class RecommendationLog {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — PK 필드명: id → recommendationLogId로 변경 (DDL 컬럼명 recommendation_log_id 매핑)
+ * — 수동 @CreationTimestamp created_at 필드 제거됨
+ */
+public class RecommendationLog extends BaseAuditEntity {
 
-    /** 추천 로그 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 추천 로그 고유 ID (PK, BIGINT AUTO_INCREMENT, 컬럼명: recommendation_log_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "recommendation_log_id")
+    private Long recommendationLogId;
 
     /**
      * 추천 대상 사용자.
@@ -106,8 +110,5 @@ public class RecommendationLog {
     @Column(name = "rank_position")
     private Integer rankPosition;
 
-    /** 추천 발생 시각 */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at은 BaseAuditEntity(→BaseTimeEntity)에서 자동 관리 — 수동 @CreationTimestamp 필드 제거됨 */
 }

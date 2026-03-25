@@ -132,12 +132,55 @@ public enum ErrorCode {
     /** 이미 완료된 주문에 대한 중복 결제 시도 (멱등성 보장). */
     DUPLICATE_ORDER(HttpStatus.CONFLICT, "PAY003", "이미 처리된 주문입니다"),
 
+    /** 동일 멱등키로 다른 요청 파라미터를 전송한 경우. */
+    IDEMPOTENCY_KEY_REUSE(HttpStatus.UNPROCESSABLE_ENTITY, "PAY004", "동일한 멱등키로 다른 요청을 보낼 수 없습니다"),
+
+    /** Toss 웹훅 서명 검증 실패. */
+    INVALID_WEBHOOK_SIGNATURE(HttpStatus.FORBIDDEN, "PAY005", "웹훅 서명이 유효하지 않습니다"),
+
     // ─────────────────────────────────────────────
     // 구독 (SUB0xx)
     // ─────────────────────────────────────────────
 
     /** 활성 구독이 이미 존재하는 상태에서 신규 구독 시도. */
-    ACTIVE_SUBSCRIPTION_EXISTS(HttpStatus.CONFLICT, "SUB001", "이미 활성 구독이 있습니다");
+    ACTIVE_SUBSCRIPTION_EXISTS(HttpStatus.CONFLICT, "SUB001", "이미 활성 구독이 있습니다"),
+
+    /** 활성 구독을 찾을 수 없음 (취소 시). */
+    SUBSCRIPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "SUB002", "활성 구독을 찾을 수 없습니다"),
+
+    // ─────────────────────────────────────────────
+    // 커뮤니티 (POST0xx)
+    // ─────────────────────────────────────────────
+
+    /** 게시글 ID에 해당하는 게시글을 찾을 수 없음. */
+    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "POST001", "게시글을 찾을 수 없습니다"),
+
+    /** 게시글 수정/삭제 시 작성자 본인이 아닌 경우. */
+    POST_ACCESS_DENIED(HttpStatus.FORBIDDEN, "POST002", "게시글 수정/삭제 권한이 없습니다"),
+
+    // ─────────────────────────────────────────────
+    // 리뷰 (REV0xx)
+    // ─────────────────────────────────────────────
+
+    /** 같은 사용자가 같은 영화에 중복 리뷰 작성 시도. */
+    DUPLICATE_REVIEW(HttpStatus.CONFLICT, "REV001", "이미 리뷰를 작성했습니다"),
+
+    // ─────────────────────────────────────────────
+    // 영화 (MOV0xx)
+    // ─────────────────────────────────────────────
+
+    /** 영화 ID에 해당하는 영화를 찾을 수 없음. */
+    MOVIE_NOT_FOUND(HttpStatus.NOT_FOUND, "MOV001", "영화를 찾을 수 없습니다"),
+
+    // ─────────────────────────────────────────────
+    // 위시리스트 (WISH0xx)
+    // ─────────────────────────────────────────────
+
+    /** 이미 위시리스트에 추가된 영화에 대한 중복 추가 시도. */
+    DUPLICATE_WISHLIST(HttpStatus.CONFLICT, "WISH001", "이미 위시리스트에 추가된 영화입니다"),
+
+    /** 위시리스트에서 해당 영화 항목을 찾을 수 없음. */
+    WISHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "WISH002", "위시리스트 항목을 찾을 수 없습니다");
 
     // ─────────────────────────────────────────────
     // 필드

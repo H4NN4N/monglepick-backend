@@ -7,6 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 
@@ -43,19 +46,25 @@ public class TossPaymentsClient {
     /** Toss Payments 시크릿 키 (로깅/디버깅용 보관, API 호출에는 restClient의 기본 헤더 사용) */
     private final String secretKey;
 
+    /** Toss 웹훅 서명 검증용 시크릿 키 (빈 문자열이면 서명 검증 비활성화) */
+    private final String webhookSecret;
+
     /**
      * TossPaymentsClient 생성자.
      *
      * <p>시크릿 키를 Base64 인코딩하여 RestClient의 기본 Authorization 헤더에 설정한다.
      * Toss Payments 규격: {@code Base64(secretKey + ":")} → Basic 인증 헤더.</p>
      *
-     * @param secretKey Toss Payments 시크릿 키 (application.yml의 toss.payments.secret-key)
-     * @param baseUrl   Toss Payments API 베이스 URL (application.yml의 toss.payments.base-url)
+     * @param secretKey     Toss Payments 시크릿 키 (application.yml의 toss.payments.secret-key)
+     * @param baseUrl       Toss Payments API 베이스 URL (application.yml의 toss.payments.base-url)
+     * @param webhookSecret Toss 웹훅 서명 검증 시크릿 (빈 문자열이면 검증 비활성화)
      */
     public TossPaymentsClient(
-            @Value("${toss.payments.secret-key:test_sk_ep4IGKBJCBJVOxZGnxz8rMyEYxQ0EBnr}") String secretKey,
-            @Value("${toss.payments.base-url:https://api.tosspayments.com/v1}") String baseUrl) {
+            @Value("${toss.payments.secret-key}") String secretKey,
+            @Value("${toss.payments.base-url:https://api.tosspayments.com/v1}") String baseUrl,
+            @Value("${toss.payments.webhook-secret:}") String webhookSecret) {
         this.secretKey = secretKey;
+        this.webhookSecret = webhookSecret;
 
         // Toss Payments Basic 인증: secretKey + ":" 를 Base64 인코딩
         String encodedKey = Base64.getEncoder().encodeToString((secretKey + ":").getBytes());
@@ -66,7 +75,8 @@ public class TossPaymentsClient {
                 .defaultHeader("Content-Type", "application/json")
                 .build();
 
-        log.info("TossPaymentsClient 초기화 완료: baseUrl={}", baseUrl);
+        log.info("TossPaymentsClient 초기화 완료: baseUrl={}, webhookSignatureEnabled={}",
+                baseUrl, !webhookSecret.isBlank());
     }
 
     // ──────────────────────────────────────────────
@@ -166,6 +176,44 @@ public class TossPaymentsClient {
             // 취소 실패는 로그만 남기고 진행 (수동 환불 필요)
             log.error("Toss 결제 취소 실패 (수동 처리 필요): paymentKey={}, error={}",
                     paymentKey, e.getMessage(), e);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // 웹훅 서명 검증
+    // ──────────────────────────────────────────────
+
+    /**
+     * Toss 웹훅 서명을 검증한다 (HMAC-SHA256).
+     *
+     * <p>webhookSecret이 설정되지 않으면 검증을 건너뛴다 (개발 환경).
+     * 운영 환경에서는 반드시 toss.payments.webhook-secret을 설정해야 한다.</p>
+     *
+     * @param rawBody   웹훅 요청 Body 원문
+     * @param signature TossPayments-Signature 헤더 값
+     * @return true면 검증 통과 또는 검증 비활성화
+     */
+    public boolean verifyWebhookSignature(String rawBody, String signature) {
+        // 웹훅 시크릿 미설정 → 검증 비활성화 (개발 환경)
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            log.warn("웹훅 서명 검증 비활성화 (toss.payments.webhook-secret 미설정)");
+            return true;
+        }
+
+        if (signature == null || signature.isBlank()) {
+            log.warn("웹훅 서명 헤더(TossPayments-Signature) 누락");
+            return false;
+        }
+
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(webhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hash = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
+            String computed = Base64.getEncoder().encodeToString(hash);
+            return computed.equals(signature);
+        } catch (Exception e) {
+            log.error("웹훅 서명 검증 중 오류: {}", e.getMessage(), e);
+            return false;
         }
     }
 

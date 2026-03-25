@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.watchhistory.entity;
 
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -9,14 +10,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /**
  * 사용자 위시리스트 엔티티
@@ -30,12 +28,18 @@ import java.time.LocalDateTime;
 @Table(name = "user_wishlist")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class UserWishlist {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — PK 필드명: id → wishlistId로 변경 (DDL 컬럼명 wishlist_id 매핑)
+ * — addedAt 수동 필드 및 @PrePersist 제거됨 (created_at으로 대체)
+ */
+public class UserWishlist extends BaseAuditEntity {
 
-    /** 위시리스트 항목 고유 식별자 */
+    /** 위시리스트 항목 고유 식별자 (PK, BIGINT AUTO_INCREMENT, 컬럼명: wishlist_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "wishlist_id")
+    private Long wishlistId;
 
     /** 위시리스트 소유 사용자 (지연 로딩) */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -46,18 +50,11 @@ public class UserWishlist {
     @Column(name = "movie_id", nullable = false, length = 50)
     private String movieId;
 
-    /** 위시리스트 추가 시각 */
-    @Column(name = "added_at", nullable = false, updatable = false)
-    private LocalDateTime addedAt;
+    /* addedAt 수동 필드 제거됨 — BaseTimeEntity의 created_at이 위시리스트 추가 시각 역할을 대체 */
 
     @Builder
     public UserWishlist(User user, String movieId) {
         this.user = user;
         this.movieId = movieId;
-    }
-
-    @PrePersist
-    protected void onCreate() {
-        this.addedAt = LocalDateTime.now();
     }
 }

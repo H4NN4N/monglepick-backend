@@ -1,0 +1,116 @@
+package com.monglepick.monglepickbackend.domain.auth.filter;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletInputStream;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationServiceException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.authentication.AbstractAuthenticationProcessingFilter;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.util.StreamUtils;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
+/**
+ * JSON 기반 로컬 로그인 필터.
+ *
+ * <p>KMG 프로젝트의 LoginFilter 패턴을 적용하여
+ * Spring Security의 AbstractAuthenticationProcessingFilter를 확장한다.
+ * JSON Body에서 email/password를 추출하여 AuthenticationManager에 위임한다.</p>
+ *
+ * <p>인터셉트 경로: POST /api/v1/auth/login</p>
+ */
+public class LoginFilter extends AbstractAuthenticationProcessingFilter {
+
+    private final AuthenticationSuccessHandler successHandler;
+
+    /**
+     * LoginFilter 생성자.
+     *
+     * @param authenticationManager Spring Security 인증 매니저
+     * @param successHandler        인증 성공 핸들러 (JWT 발급)
+     */
+    public LoginFilter(AuthenticationManager authenticationManager,
+                        AuthenticationSuccessHandler successHandler) {
+        super("/api/v1/auth/login");
+        setAuthenticationManager(authenticationManager);
+        this.successHandler = successHandler;
+    }
+
+    /**
+     * JSON 요청 Body에서 email/password를 추출하여 인증을 시도한다.
+     *
+     * <p>요청 JSON 형식:</p>
+     * <pre>{"email": "user@example.com", "password": "mypassword123"}</pre>
+     */
+    @Override
+    public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response)
+            throws AuthenticationException {
+
+        if (!request.getMethod().equals("POST")) {
+            throw new AuthenticationServiceException("Authentication method not supported: " + request.getMethod());
+        }
+
+        Map<String, String> loginMap;
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            ServletInputStream inputStream = request.getInputStream();
+            String messageBody = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
+            loginMap = objectMapper.readValue(messageBody, new TypeReference<>() {
+            });
+        } catch (IOException e) {
+            throw new RuntimeException("로그인 요청 파싱 실패", e);
+        }
+
+        /* email / password 추출 (KMG는 useremail/userpassword 사용, 현재 프로젝트는 email/password) */
+        String email = loginMap.get("email");
+        email = (email != null) ? email.trim() : "";
+        String password = loginMap.get("password");
+        password = (password != null) ? password : "";
+
+        /* 인증되지 않은 토큰 생성 → AuthenticationManager에 위임 */
+        UsernamePasswordAuthenticationToken authRequest =
+                UsernamePasswordAuthenticationToken.unauthenticated(email, password);
+
+        setDetails(request, authRequest);
+
+        return this.getAuthenticationManager().authenticate(authRequest);
+    }
+
+    /**
+     * 인증 성공 시 LoginSuccessHandler를 호출하여 JWT 토큰을 발급한다.
+     */
+    @Override
+    protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response,
+                                             FilterChain chain, Authentication authResult)
+            throws IOException, ServletException {
+        successHandler.onAuthenticationSuccess(request, response, authResult);
+    }
+
+    /**
+     * 인증 실패 시 401 JSON 응답을 반환한다.
+     */
+    @Override
+    protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response,
+                                               AuthenticationException failed) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"code\":\"A003\",\"message\":\"이메일 또는 비밀번호가 올바르지 않습니다\"}");
+    }
+
+    /**
+     * request 상세 정보를 인증 토큰에 설정한다.
+     */
+    protected void setDetails(HttpServletRequest request, UsernamePasswordAuthenticationToken authRequest) {
+        authRequest.setDetails(authenticationDetailsSource.buildDetails(request));
+    }
+}

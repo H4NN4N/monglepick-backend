@@ -1,6 +1,8 @@
 package com.monglepick.monglepickbackend.domain.search.entity;
 
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,7 +18,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -28,11 +29,18 @@ import java.time.LocalDateTime;
  * 한 사용자가 같은 키워드를 다시 검색하면 기존 레코드가 업데이트된다
  * (user_id, keyword UNIQUE 제약).</p>
  *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseAuditEntity 상속 추가 (created_at/updated_at/created_by/updated_by 자동 관리)</li>
+ *   <li>2026-03-24: PK 필드명 id → searchHistoryId 로 변경, @Column(name = "search_history_id") 추가</li>
+ *   <li>2026-03-24: searchedAt의 @CreationTimestamp 제거 — 도메인 고유 타임스탬프로 유지</li>
+ * </ul>
+ *
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code user} — 검색한 사용자 (FK → users.user_id)</li>
  *   <li>{@code keyword} — 검색 키워드 (최대 200자, 필수)</li>
- *   <li>{@code searchedAt} — 검색 시각</li>
+ *   <li>{@code searchedAt} — 검색 시각 (도메인 고유 타임스탬프, BaseAuditEntity의 created_at과 별도)</li>
  * </ul>
  */
 @Entity
@@ -43,12 +51,17 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class SearchHistory {
+/* BaseAuditEntity 상속 추가: created_at, updated_at, created_by, updated_by 컬럼 자동 관리 */
+public class SearchHistory extends BaseAuditEntity {
 
-    /** 검색 이력 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 검색 이력 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 기존 필드명 'id'에서 'searchHistoryId'로 변경하여 엔티티 식별 명확화.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "search_history_id")
+    private Long searchHistoryId;
 
     /**
      * 검색한 사용자.
@@ -62,8 +75,12 @@ public class SearchHistory {
     @Column(name = "keyword", length = 200, nullable = false)
     private String keyword;
 
-    /** 검색 시각 (동일 키워드 재검색 시 이 값이 갱신된다) */
-    @CreationTimestamp
+    /**
+     * 검색 시각 (도메인 고유 타임스탬프).
+     * 동일 키워드 재검색 시 이 값이 갱신된다.
+     * BaseAuditEntity의 created_at과는 별도로, 실제 검색 시점을 기록하는 도메인 필드.
+     * 서비스 레이어에서 직접 설정/갱신한다.
+     */
     @Column(name = "searched_at")
     private LocalDateTime searchedAt;
 }

@@ -1,6 +1,8 @@
 package com.monglepick.monglepickbackend.domain.review.entity;
 
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+/* BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -9,14 +11,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /**
  * 영화 리뷰 엔티티
@@ -26,17 +25,29 @@ import java.time.LocalDateTime;
  *
  * <p>한 사용자가 같은 영화에 대해 중복 리뷰를 작성할 수 없습니다.
  * (서비스 레이어에서 검증)</p>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>PK 필드명: id → reviewId (컬럼명: review_id)</li>
+ *   <li>BaseAuditEntity 상속 추가 — created_at/updated_at/created_by/updated_by 자동 관리</li>
+ *   <li>수동 createdAt 필드 제거 — BaseTimeEntity에서 상속</li>
+ *   <li>@PrePersist onCreate() 메서드 제거 — BaseTimeEntity의 @CreationTimestamp가 처리</li>
+ * </ul>
  */
 @Entity
 @Table(name = "reviews")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Review {
+public class Review extends BaseAuditEntity {
 
-    /** 리뷰 고유 식별자 */
+    /**
+     * 리뷰 고유 식별자 (BIGINT AUTO_INCREMENT PK).
+     * 필드명 변경: id → reviewId (엔티티 PK 네이밍 통일)
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "review_id")
+    private Long reviewId;
 
     /** 리뷰 작성자 (지연 로딩) */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -55,9 +66,8 @@ public class Review {
     @Column(columnDefinition = "TEXT")
     private String content;
 
-    /** 리뷰 작성 시각 */
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at, updated_at → BaseTimeEntity에서 상속 (수동 createdAt 및 @PrePersist 제거) */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 
     @Builder
     public Review(User user, String movieId, Double rating, String content) {
@@ -67,10 +77,7 @@ public class Review {
         this.content = content;
     }
 
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-    }
+    /* @PrePersist onCreate() 제거 — BaseTimeEntity의 @CreationTimestamp가 created_at 자동 설정 */
 
     /** 리뷰 내용 및 평점 수정 */
     public void update(Double rating, String content) {

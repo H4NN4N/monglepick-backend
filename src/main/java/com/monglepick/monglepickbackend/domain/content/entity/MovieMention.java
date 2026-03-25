@@ -1,6 +1,8 @@
 package com.monglepick.monglepickbackend.domain.content.entity;
 
 import com.monglepick.monglepickbackend.domain.movie.entity.Movie;
+/* BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,10 +18,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 /**
  * 영화 언급 통계 엔티티 — movie_mentions 테이블 매핑.
@@ -40,6 +40,13 @@ import java.time.LocalDateTime;
  * <h3>UNIQUE 제약</h3>
  * <p>(movie_id, source, period_start)가 유니크하므로,
  * 같은 영화+소스+기간에 대해 하나의 집계 레코드만 존재한다.</p>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>PK 필드명: id → movieMentionId (컬럼명: movie_mention_id)</li>
+ *   <li>BaseAuditEntity 상속 추가 — created_at/updated_at/created_by/updated_by 자동 관리</li>
+ *   <li>수동 createdAt 필드 및 @CreationTimestamp 제거 — BaseTimeEntity에서 상속</li>
+ * </ul>
  */
 @Entity
 @Table(name = "movie_mentions", uniqueConstraints = {
@@ -49,12 +56,16 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class MovieMention {
+public class MovieMention extends BaseAuditEntity {
 
-    /** 언급 통계 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 영화 언급 통계 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 필드명 변경: id → movieMentionId (엔티티 PK 네이밍 통일)
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "movie_mention_id")
+    private Long movieMentionId;
 
     /**
      * 언급된 영화.
@@ -92,8 +103,6 @@ public class MovieMention {
     @Column(name = "period_end", nullable = false)
     private LocalDate periodEnd;
 
-    /** 레코드 생성 시각 */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at, updated_at → BaseTimeEntity에서 상속 */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 }

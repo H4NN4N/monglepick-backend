@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.reward.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -22,6 +23,12 @@ import java.time.LocalDate;
  * <p>사용자의 포인트 잔액 및 등급 정보를 관리한다.
  * 각 사용자당 하나의 포인트 레코드만 존재한다 (user_id UNIQUE).</p>
  *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseTimeEntity → BaseAuditEntity 변경 (created_by/updated_by 추가)</li>
+ *   <li>2026-03-24: PK 필드명 pointId → userPointId 로 변경, @Column(name = "user_point_id") 추가</li>
+ * </ul>
+ *
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code userId} — 사용자 ID (FK → users.user_id, UNIQUE)</li>
@@ -41,13 +48,18 @@ import java.time.LocalDate;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class UserPoint extends BaseTimeEntity {
+/* BaseTimeEntity → BaseAuditEntity 변경: created_by, updated_by 컬럼 추가 관리 */
+public class UserPoint extends BaseAuditEntity {
 
-    /** 포인트 레코드 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 포인트 레코드 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 기존 필드명 'pointId'에서 'userPointId'로 변경하여 엔티티 식별 명확화.
+     * 기존 컬럼명 'point_id'에서 'user_point_id'로 변경.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "point_id")
-    private Long pointId;
+    @Column(name = "user_point_id")
+    private Long userPointId;
 
     /**
      * 사용자 ID (VARCHAR(50), NOT NULL, UNIQUE).

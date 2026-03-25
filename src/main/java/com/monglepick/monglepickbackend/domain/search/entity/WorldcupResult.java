@@ -2,6 +2,8 @@ package com.monglepick.monglepickbackend.domain.search.entity;
 
 import com.monglepick.monglepickbackend.domain.movie.entity.Movie;
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,9 +18,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 
 /**
  * 이상형 월드컵 결과 엔티티 — worldcup_results 테이블 매핑.
@@ -26,6 +25,13 @@ import java.time.LocalDateTime;
  * <p>온보딩 과정에서 사용자가 참여하는 "영화 이상형 월드컵"의 결과를 저장한다.
  * 토너먼트 형식으로 영화를 비교/선택하여 사용자의 취향을 파악하고,
  * 이를 초기 선호도(UserPreference)로 반영한다.</p>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseAuditEntity 상속 추가 (created_at/updated_at/created_by/updated_by 자동 관리)</li>
+ *   <li>2026-03-24: PK 필드명 id → worldcupResultId 로 변경, @Column(name = "worldcup_result_id") 추가</li>
+ *   <li>2026-03-24: 수동 createdAt (@CreationTimestamp) 필드 제거 — BaseAuditEntity가 created_at 자동 관리</li>
+ * </ul>
  *
  * <h3>주요 필드</h3>
  * <ul>
@@ -45,12 +51,17 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class WorldcupResult {
+/* BaseAuditEntity 상속 추가: created_at, updated_at, created_by, updated_by 컬럼 자동 관리 */
+public class WorldcupResult extends BaseAuditEntity {
 
-    /** 월드컵 결과 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 월드컵 결과 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 기존 필드명 'id'에서 'worldcupResultId'로 변경하여 엔티티 식별 명확화.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "worldcup_result_id")
+    private Long worldcupResultId;
 
     /**
      * 월드컵 참여 사용자.
@@ -118,8 +129,5 @@ public class WorldcupResult {
     @Builder.Default
     private Boolean onboardingCompleted = false;
 
-    /** 월드컵 결과 생성 시각 */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* 수동 createdAt 필드 제거됨 — BaseAuditEntity가 created_at 컬럼을 자동 관리 */
 }

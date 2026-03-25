@@ -155,6 +155,31 @@ public class GlobalExceptionHandler {
      * @param ex 예상하지 못한 예외
      * @return 500 응답 (내부 오류 메시지, 상세 정보 없음)
      */
+    /**
+     * IllegalArgumentException 처리 (잘못된 Enum 변환 등).
+     *
+     * <p>Post.Category.valueOf(), OrderType.valueOf() 등에서 유효하지 않은 값이
+     * 전달되었을 때 발생하는 예외를 400 Bad Request로 변환한다.</p>
+     *
+     * @param ex IllegalArgumentException
+     * @return 400 응답
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    protected ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("잘못된 인자: {}", ex.getMessage());
+
+        ErrorCode errorCode = ErrorCode.INVALID_INPUT;
+        ErrorResponse response = new ErrorResponse(
+                errorCode.getCode(),
+                ex.getMessage(),
+                Map.of()
+        );
+
+        return ResponseEntity
+                .status(errorCode.getHttpStatus())
+                .body(response);
+    }
+
     @ExceptionHandler(Exception.class)
     protected ResponseEntity<ErrorResponse> handleException(Exception ex) {
         log.error("예상하지 못한 서버 오류 발생", ex);

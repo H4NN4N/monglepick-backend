@@ -1,6 +1,6 @@
 package com.monglepick.monglepickbackend.domain.movie.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -39,12 +39,17 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class FavGenre extends BaseTimeEntity {
+/**
+ * BaseTimeEntity → BaseAuditEntity로 변경: created_by, updated_by 감사 필드 추가 상속
+ * — PK 필드명: id → favGenreId로 변경 (DDL 컬럼명 fav_genre_id 매핑)
+ */
+public class FavGenre extends BaseAuditEntity {
 
-    /** 선호 장르 레코드 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 선호 장르 레코드 고유 ID (PK, BIGINT AUTO_INCREMENT, 컬럼명: fav_genre_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "fav_genre_id")
+    private Long favGenreId;
 
     /**
      * 사용자 ID (VARCHAR(50), NOT NULL).

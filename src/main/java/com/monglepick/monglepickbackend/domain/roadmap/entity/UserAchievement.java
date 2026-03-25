@@ -1,6 +1,8 @@
 package com.monglepick.monglepickbackend.domain.roadmap.entity;
 
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+/* BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,7 +18,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -32,7 +33,7 @@ import java.time.LocalDateTime;
  *   <li>{@code user} — 업적 달성 사용자 (FK → users.user_id)</li>
  *   <li>{@code achievementType} — 업적 유형 (예: "course_complete", "quiz_perfect", "review_count")</li>
  *   <li>{@code achievementKey} — 업적 식별 키 (예: 코스 ID, 수치 등)</li>
- *   <li>{@code achievedAt} — 업적 달성 시각</li>
+ *   <li>{@code achievedAt} — 업적 달성 시각 (도메인 고유 필드, 유지)</li>
  *   <li>{@code metadata} — 추가 메타데이터 (JSON)</li>
  * </ul>
  *
@@ -43,6 +44,14 @@ import java.time.LocalDateTime;
  *   <li>{@code review_count_10} — 리뷰 10개 작성</li>
  *   <li>{@code genre_explorer} — 장르 탐험가 (5개 이상 장르 시청)</li>
  * </ul>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>PK 필드명: id → userAchievementId (컬럼명: user_achievement_id)</li>
+ *   <li>BaseAuditEntity 상속 추가 — created_at/updated_at/created_by/updated_by 자동 관리</li>
+ *   <li>achievedAt 필드는 도메인 고유 타임스탬프이므로 유지</li>
+ *   <li>@CreationTimestamp 제거 (achievedAt) — 도메인 필드로 전환, 별도 설정 필요</li>
+ * </ul>
  */
 @Entity
 @Table(name = "user_achievements", uniqueConstraints = {
@@ -52,12 +61,16 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class UserAchievement {
+public class UserAchievement extends BaseAuditEntity {
 
-    /** 업적 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 업적 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 필드명 변경: id → userAchievementId (엔티티 PK 네이밍 통일)
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "user_achievement_id")
+    private Long userAchievementId;
 
     /**
      * 업적 달성 사용자.
@@ -82,8 +95,11 @@ public class UserAchievement {
     @Column(name = "achievement_key", length = 100, nullable = false)
     private String achievementKey;
 
-    /** 업적 달성 시각 */
-    @CreationTimestamp
+    /**
+     * 업적 달성 시각 (도메인 고유 타임스탬프).
+     * created_at(레코드 생성)과 별개로, 실제 업적 달성 시점을 기록한다.
+     * 서비스 레이어에서 명시적으로 설정해야 한다.
+     */
     @Column(name = "achieved_at")
     private LocalDateTime achievedAt;
 
@@ -94,4 +110,7 @@ public class UserAchievement {
      */
     @Column(name = "metadata", columnDefinition = "json")
     private String metadata;
+
+    /* created_at, updated_at → BaseTimeEntity에서 상속 */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 }

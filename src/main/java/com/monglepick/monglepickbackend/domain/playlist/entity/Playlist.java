@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.playlist.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -20,6 +21,11 @@ import lombok.NoArgsConstructor;
  * 공개/비공개 설정을 지원하며, 플레이리스트에 포함된 영화는
  * {@link PlaylistItem}에서 관리한다.</p>
  *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseTimeEntity → BaseAuditEntity 변경 (created_by/updated_by 추가)</li>
+ * </ul>
+ *
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code userId} — 소유자 사용자 ID</li>
@@ -34,9 +40,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class Playlist extends BaseTimeEntity {
+/* BaseTimeEntity → BaseAuditEntity 변경: created_by, updated_by 컬럼 추가 관리 */
+public class Playlist extends BaseAuditEntity {
 
-    /** 플레이리스트 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 플레이리스트 고유 ID (BIGINT AUTO_INCREMENT PK) — PK 컬럼명 변경 없음 */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "playlist_id")

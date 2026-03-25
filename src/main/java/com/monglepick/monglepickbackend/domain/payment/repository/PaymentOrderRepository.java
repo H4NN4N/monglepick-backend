@@ -21,7 +21,7 @@ import java.util.Optional;
  *
  * <h3>주요 메서드</h3>
  * <ul>
- *   <li>{@link #findByOrderId(String)} — 주문 UUID로 조회 (PG 결제 확인 콜백에서 사용)</li>
+ *   <li>{@link #findByPaymentOrderId(String)} — 주문 UUID로 조회 (PG 결제 확인 콜백에서 사용)</li>
  *   <li>{@link #findByUserIdOrderByCreatedAtDesc(String, Pageable)} — 사용자 결제 이력 (페이징)</li>
  * </ul>
  *
@@ -39,7 +39,7 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Stri
      * @param orderId 주문 UUID (PG에 전달된 주문 번호)
      * @return 결제 주문 (존재하지 않으면 empty)
      */
-    Optional<PaymentOrder> findByOrderId(String orderId);
+    Optional<PaymentOrder> findByPaymentOrderId(String orderId);
 
     /**
      * 사용자의 결제 이력을 최신순으로 페이징 조회한다.
@@ -58,4 +58,15 @@ public interface PaymentOrderRepository extends JpaRepository<PaymentOrder, Stri
      * @return 결제 주문 페이지 (최신순 정렬)
      */
     Page<PaymentOrder> findByUserIdOrderByCreatedAtDesc(String userId, Pageable pageable);
+
+    /**
+     * 멱등키로 기존 주문을 조회한다.
+     *
+     * <p>클라이언트가 동일한 Idempotency-Key로 재요청한 경우
+     * 기존 주문을 반환하여 중복 생성을 방지한다.</p>
+     *
+     * @param idempotencyKey 클라이언트가 전달한 멱등키
+     * @return 기존 주문 (없으면 empty)
+     */
+    Optional<PaymentOrder> findByIdempotencyKey(String idempotencyKey);
 }

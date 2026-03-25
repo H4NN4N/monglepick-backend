@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.community.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity로 변경 — created_at/updated_at에 더해 created_by/updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -27,6 +28,12 @@ import lombok.NoArgsConstructor;
  *   <li>{@code content} — 댓글 내용 (TEXT)</li>
  *   <li>{@code isDeleted} — 소프트 삭제 여부 (기본값: false)</li>
  * </ul>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>PK 필드명: commentId → postCommentId (컬럼명: post_comment_id)</li>
+ *   <li>BaseTimeEntity → BaseAuditEntity로 변경 (created_by/updated_by 추가)</li>
+ * </ul>
  */
 @Entity
 @Table(name = "post_comment")
@@ -34,13 +41,16 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class PostComment extends BaseTimeEntity {
+public class PostComment extends BaseAuditEntity {
 
-    /** 댓글 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 댓글 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 필드명 변경: commentId → postCommentId (컬럼명: post_comment_id)
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "comment_id")
-    private Long commentId;
+    @Column(name = "post_comment_id")
+    private Long postCommentId;
 
     /**
      * 게시글 ID (BIGINT, NOT NULL).
@@ -75,4 +85,7 @@ public class PostComment extends BaseTimeEntity {
     @Column(name = "is_deleted")
     @Builder.Default
     private Boolean isDeleted = false;
+
+    /* created_at, updated_at → BaseTimeEntity에서 상속 */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 }

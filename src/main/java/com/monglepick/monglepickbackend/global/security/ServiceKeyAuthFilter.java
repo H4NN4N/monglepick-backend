@@ -53,6 +53,9 @@ public class ServiceKeyAuthFilter extends OncePerRequestFilter {
     /** 요청 헤더에서 서비스 키를 읽을 때 사용하는 헤더 이름 */
     private static final String SERVICE_KEY_HEADER = "X-Service-Key";
 
+    /** 서비스 키 인증 시 principal로 사용하는 식별자 (PointController.resolveUserId와 일치해야 함) */
+    public static final String SERVICE_PRINCIPAL = "service";
+
     /** 401 응답 시 사용할 에러 코드 (ErrorCode.INVALID_SERVICE_KEY와 동일) */
     private static final String ERROR_CODE = "S001";
 
@@ -109,10 +112,10 @@ public class ServiceKeyAuthFilter extends OncePerRequestFilter {
 
         // ── 3단계: 헤더가 있고 서비스 키가 일치 → ROLE_SERVICE 인증 설정 ──
         if (serviceKey.equals(requestServiceKey)) {
-            // "service"라는 principal로 인증 토큰 생성 (비밀번호 불필요)
+            // SERVICE_PRINCIPAL을 principal로 인증 토큰 생성 (비밀번호 불필요)
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
-                            "service",                                          // principal: 서비스 식별자
+                            SERVICE_PRINCIPAL,                                   // principal: 서비스 식별자
                             null,                                               // credentials: 불필요
                             List.of(new SimpleGrantedAuthority("ROLE_SERVICE")) // 서비스 전용 권한
                     );

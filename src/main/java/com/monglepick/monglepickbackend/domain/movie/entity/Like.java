@@ -1,5 +1,6 @@
 package com.monglepick.monglepickbackend.domain.movie.entity;
 
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -12,7 +13,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -34,8 +34,9 @@ import java.time.LocalDateTime;
  * <p>UNIQUE(user_id, movie_id) — 동일 사용자가 동일 영화에 중복 좋아요 불가.</p>
  *
  * <h3>타임스탬프</h3>
- * <p>created_at만 존재 (좋아요는 수정 개념이 없으므로 updated_at 불필요).
- * BaseTimeEntity를 상속하지 않고 {@code @CreationTimestamp}를 직접 사용한다.</p>
+ * <p>BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리.
+ * 기존 수동 @CreationTimestamp created_at 필드 제거됨.
+ * deletedAt은 소프트 삭제용 도메인 고유 필드이므로 유지.</p>
  */
 @Entity
 @Table(
@@ -46,12 +47,19 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class Like {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — PK 필드명: id → likeId로 변경 (DDL 컬럼명 like_id 매핑)
+ * — 수동 @CreationTimestamp created_at 필드 제거됨
+ * — deletedAt은 소프트 삭제용 도메인 고유 필드이므로 유지
+ */
+public class Like extends BaseAuditEntity {
 
-    /** 좋아요 레코드 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 좋아요 레코드 고유 ID (PK, BIGINT AUTO_INCREMENT, 컬럼명: like_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "like_id")
+    private Long likeId;
 
     /**
      * 사용자 ID (VARCHAR(50), NOT NULL).
@@ -67,13 +75,7 @@ public class Like {
     @Column(name = "movie_id", length = 50, nullable = false)
     private String movieId;
 
-    /**
-     * 레코드 생성 시각.
-     * INSERT 시 자동 설정되며 이후 변경되지 않는다.
-     */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at은 BaseAuditEntity(→BaseTimeEntity)에서 자동 관리 — 수동 @CreationTimestamp 필드 제거됨 */
 
     /**
      * 소프트 삭제 시각 (nullable).

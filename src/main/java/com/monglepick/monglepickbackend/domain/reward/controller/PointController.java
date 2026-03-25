@@ -15,6 +15,9 @@ import com.monglepick.monglepickbackend.domain.reward.dto.PointDto.PointItemResp
 import com.monglepick.monglepickbackend.domain.reward.service.AttendanceService;
 import com.monglepick.monglepickbackend.domain.reward.service.PointItemService;
 import com.monglepick.monglepickbackend.domain.reward.service.PointService;
+import com.monglepick.monglepickbackend.global.exception.BusinessException;
+import com.monglepick.monglepickbackend.global.exception.ErrorCode;
+import com.monglepick.monglepickbackend.global.security.ServiceKeyAuthFilter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
 import java.util.List;
 
 /**
@@ -78,6 +82,35 @@ public class PointController {
     /** 포인트 아이템 서비스 (아이템 조회/교환) */
     private final PointItemService pointItemService;
 
+    /**
+     * 인증 정보에서 userId를 추출한다.
+     *
+     * <p>JWT 인증: principal.getName() = userId (JwtAuthenticationFilter가 설정)
+     * ServiceKey 인증: principal.getName() = "service" → requestUserId 파라미터 사용</p>
+     *
+     * @param principal     인증된 사용자 정보
+     * @param requestUserId 요청에 포함된 userId (Agent 호출 시 사용, nullable)
+     * @return 확인된 사용자 ID
+     * @throws BusinessException 인증 정보가 없거나, ServiceKey 호출인데 userId가 누락된 경우
+     */
+    private String resolveUserId(Principal principal, String requestUserId) {
+        if (principal == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        String principalName = principal.getName();
+
+        // ServiceKey 인증: Agent가 요청 파라미터로 userId를 전달
+        if (ServiceKeyAuthFilter.SERVICE_PRINCIPAL.equals(principalName)) {
+            if (requestUserId == null || requestUserId.isBlank()) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "서비스 호출 시 userId는 필수입니다");
+            }
+            return requestUserId;
+        }
+
+        // JWT 인증: 토큰에서 추출한 userId 사용
+        return principalName;
+    }
+
     // ──────────────────────────────────────────────
     // Agent 내부 호출 엔드포인트
     // ──────────────────────────────────────────────
@@ -105,10 +138,14 @@ public class PointController {
      * @return 200 OK + CheckResponse (잔액 충분 여부, 등급별 글자 수 제한 포함)
      */
     @PostMapping("/check")
-    public ResponseEntity<CheckResponse> checkPoint(@Valid @RequestBody CheckRequest request) {
-        log.debug("POST /api/v1/point/check — userId={}, cost={}", request.userId(), request.cost());
+    public ResponseEntity<CheckResponse> checkPoint(
+            Principal principal,
+            @Valid @RequestBody CheckRequest request) {
+        // ServiceKey(Agent) → request.userId() 사용, JWT → principal에서 추출 (BOLA 방지)
+        String userId = resolveUserId(principal, request.userId());
+        log.debug("POST /api/v1/point/check — userId={}, cost={}", userId, request.cost());
 
-        CheckResponse response = pointService.checkPoint(request.userId(), request.cost());
+        CheckResponse response = pointService.checkPoint(userId, request.cost());
         return ResponseEntity.ok(response);
     }
 
@@ -138,12 +175,16 @@ public class PointController {
      * @throws com.monglepick.monglepickbackend.global.exception.BusinessException          포인트 레코드 없음
      */
     @PostMapping("/deduct")
-    public ResponseEntity<DeductResponse> deductPoint(@Valid @RequestBody DeductRequest request) {
+    public ResponseEntity<DeductResponse> deductPoint(
+            Principal principal,
+            @Valid @RequestBody DeductRequest request) {
+        // ServiceKey(Agent) → request.userId() 사용, JWT → principal에서 추출 (BOLA 방지)
+        String userId = resolveUserId(principal, request.userId());
         log.info("POST /api/v1/point/deduct — userId={}, amount={}, sessionId={}",
-                request.userId(), request.amount(), request.sessionId());
+                userId, request.amount(), request.sessionId());
 
         DeductResponse response = pointService.deductPoint(
-                request.userId(),
+                userId,
                 request.amount(),
                 request.sessionId(),
                 request.description()
@@ -175,12 +216,16 @@ public class PointController {
      * @throws com.monglepick.monglepickbackend.global.exception.BusinessException 포인트 레코드 없음
      */
     @PostMapping("/earn")
-    public ResponseEntity<EarnResponse> earnPoint(@Valid @RequestBody EarnRequest request) {
+    public ResponseEntity<EarnResponse> earnPoint(
+            Principal principal,
+            @Valid @RequestBody EarnRequest request) {
+        // ServiceKey(Agent) → request.userId() 사용, JWT → principal에서 추출 (BOLA 방지)
+        String userId = resolveUserId(principal, request.userId());
         log.info("POST /api/v1/point/earn — userId={}, amount={}, type={}",
-                request.userId(), request.amount(), request.pointType());
+                userId, request.amount(), request.pointType());
 
         EarnResponse response = pointService.earnPoint(
-                request.userId(),
+                userId,
                 request.amount(),
                 request.pointType(),
                 request.description(),
@@ -213,10 +258,13 @@ public class PointController {
      * @return 200 OK + BalanceResponse (잔액, 등급, 누적 획득)
      */
     @GetMapping("/balance")
-    public ResponseEntity<BalanceResponse> getBalance(@RequestParam String userId) {
-        log.debug("GET /api/v1/point/balance — userId={}", userId);
+    public ResponseEntity<BalanceResponse> getBalance(
+            Principal principal,
+            @RequestParam(required = false) String userId) {
+        String resolvedUserId = resolveUserId(principal, userId);
+        log.debug("GET /api/v1/point/balance — userId={}", resolvedUserId);
 
-        BalanceResponse response = pointService.getBalance(userId);
+        BalanceResponse response = pointService.getBalance(resolvedUserId);
         return ResponseEntity.ok(response);
     }
 
@@ -255,9 +303,10 @@ public class PointController {
      */
     @GetMapping("/history")
     public ResponseEntity<Page<HistoryResponse>> getHistory(
-            @RequestParam String userId,
+            Principal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String userId = resolveUserId(principal, null);
         // 페이지 크기 상한 100으로 제한 (대량 조회 방지)
         int safeSize = Math.min(size, 100);
         log.debug("GET /api/v1/point/history — userId={}, page={}, size={}", userId, page, safeSize);
@@ -304,8 +353,8 @@ public class PointController {
      * @throws com.monglepick.monglepickbackend.global.exception.BusinessException 이미 출석한 경우 (ALREADY_ATTENDED)
      */
     @PostMapping("/attendance")
-    public ResponseEntity<AttendanceResponse> checkIn(@RequestParam String userId) {
-        // TODO: JWT 구현 후 @AuthenticationPrincipal로 userId 추출로 변경
+    public ResponseEntity<AttendanceResponse> checkIn(Principal principal) {
+        String userId = resolveUserId(principal, null);
         log.info("POST /api/v1/point/attendance — userId={}", userId);
 
         AttendanceResponse response = attendanceService.checkIn(userId);
@@ -338,8 +387,8 @@ public class PointController {
      * @return 200 OK + AttendanceStatusResponse (연속일수, 총일수, 오늘출석여부, 월간날짜목록)
      */
     @GetMapping("/attendance/status")
-    public ResponseEntity<AttendanceStatusResponse> getAttendanceStatus(@RequestParam String userId) {
-        // TODO: JWT 구현 후 @AuthenticationPrincipal로 userId 추출로 변경
+    public ResponseEntity<AttendanceStatusResponse> getAttendanceStatus(Principal principal) {
+        String userId = resolveUserId(principal, null);
         log.debug("GET /api/v1/point/attendance/status — userId={}", userId);
 
         AttendanceStatusResponse response = attendanceService.getStatus(userId);
@@ -416,9 +465,9 @@ public class PointController {
      */
     @PostMapping("/items/{itemId}/exchange")
     public ResponseEntity<ExchangeResponse> exchangeItem(
-            @RequestParam String userId,
+            Principal principal,
             @PathVariable Long itemId) {
-        // TODO: JWT 구현 후 @AuthenticationPrincipal로 userId 추출로 변경
+        String userId = resolveUserId(principal, null);
         log.info("POST /api/v1/point/items/{}/exchange — userId={}", itemId, userId);
 
         ExchangeResponse response = pointItemService.exchangeItem(userId, itemId);

@@ -16,6 +16,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.data.domain.Sort;
+
 import java.util.List;
 
 /**
@@ -46,8 +51,10 @@ public class ReviewController {
      * @return 200 OK + 리뷰 목록
      */
     @GetMapping
-    public ResponseEntity<List<ReviewResponse>> getReviewsByMovie(@PathVariable String movieId) {
-        List<ReviewResponse> reviews = reviewService.getReviewsByMovie(movieId);
+    public ResponseEntity<Page<ReviewResponse>> getReviewsByMovie(
+            @PathVariable String movieId,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<ReviewResponse> reviews = reviewService.getReviewsByMovie(movieId, pageable);
         return ResponseEntity.ok(reviews);
     }
 

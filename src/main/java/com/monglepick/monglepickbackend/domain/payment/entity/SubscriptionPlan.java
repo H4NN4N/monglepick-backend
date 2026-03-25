@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.payment.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,6 +23,12 @@ import lombok.NoArgsConstructor;
  * 운영팀이 상품을 등록/수정하며, 삭제 대신 {@code isActive=false}로
  * 비활성화하여 기존 FK 참조를 보존한다.</p>
  *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseTimeEntity → BaseAuditEntity 변경 (created_by/updated_by 추가)</li>
+ *   <li>2026-03-24: PK 필드명 planId → subscriptionPlanId 로 변경, @Column(name = "subscription_plan_id") 추가</li>
+ * </ul>
+ *
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code planCode} — 상품 고유 코드 (monthly_basic 등, UNIQUE)</li>
@@ -41,8 +48,8 @@ import lombok.NoArgsConstructor;
  * yearly_premium  — 연간 프리미엄 (79,000원, 100,000P)
  * </pre>
  *
- * @see UserSubscription 사용자 구독 현황 (FK → plan_id)
- * @see PaymentOrder 결제 주문 (FK → plan_id, 구독 결제 시)
+ * @see UserSubscription 사용자 구독 현황 (FK → subscription_plan_id)
+ * @see PaymentOrder 결제 주문 (FK → subscription_plan_id, 구독 결제 시)
  */
 @Entity
 @Table(name = "subscription_plans")
@@ -50,17 +57,22 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class SubscriptionPlan extends BaseTimeEntity {
+/* BaseTimeEntity → BaseAuditEntity 변경: created_by, updated_by 컬럼 추가 관리 */
+public class SubscriptionPlan extends BaseAuditEntity {
 
     // ──────────────────────────────────────────────
     // PK
     // ──────────────────────────────────────────────
 
-    /** 구독 상품 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 구독 상품 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 기존 필드명 'planId'에서 'subscriptionPlanId'로 변경하여 엔티티 식별 명확화.
+     * 기존 컬럼명 'plan_id'에서 'subscription_plan_id'로 변경.
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "plan_id")
-    private Long planId;
+    @Column(name = "subscription_plan_id")
+    private Long subscriptionPlanId;
 
     // ──────────────────────────────────────────────
     // 상품 정보

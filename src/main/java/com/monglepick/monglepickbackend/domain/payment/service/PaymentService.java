@@ -78,7 +78,7 @@ public class PaymentService {
      * 클라이언트가 결제창을 열 때 필요한 키. 시크릿 키와 달리 노출 가능.
      * application.yml의 {@code toss.payments.client-key}에서 주입.
      */
-    @Value("${toss.payments.client-key:test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq}")
+    @Value("${toss.payments.client-key}")
     private String clientKey;
 
     // ──────────────────────────────────────────────
@@ -102,10 +102,41 @@ public class PaymentService {
      * @return 주문 응답 (orderId, amount, clientKey)
      * @throws BusinessException 구독 주문인데 planCode가 유효하지 않은 경우 (ORDER_NOT_FOUND)
      */
+    /**
+     * 결제 주문을 생성한다 (status=PENDING).
+     *
+     * <p>멱등키(idempotencyKey)가 제공된 경우:
+     * <ul>
+     *   <li>동일 키로 기존 주문이 존재하면 기존 주문 응답을 반환 (중복 생성 방지)</li>
+     *   <li>기존 주문의 userId/amount가 다르면 IDEMPOTENCY_KEY_REUSE 에러</li>
+     * </ul></p>
+     *
+     * @param request        주문 생성 요청
+     * @param idempotencyKey 멱등키 (Idempotency-Key 헤더, nullable)
+     * @return 주문 응답 (orderId, amount, clientKey)
+     */
     @Transactional
-    public OrderResponse createOrder(CreateOrderRequest request) {
-        log.info("주문 생성 시작: userId={}, orderType={}, amount={}",
-                request.userId(), request.orderType(), request.amount());
+    public OrderResponse createOrder(String userId, CreateOrderRequest request, String idempotencyKey) {
+        log.info("주문 생성 시작: userId={}, orderType={}, amount={}, idempotencyKey={}",
+                userId, request.orderType(), request.amount(), idempotencyKey);
+
+        // 0. 멱등키가 있으면 기존 주문 확인
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            var existing = orderRepository.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                PaymentOrder existingOrder = existing.get();
+                // 동일 멱등키인데 요청 내용이 다르면 에러
+                if (!existingOrder.getUserId().equals(userId)
+                        || !existingOrder.getAmount().equals(request.amount())) {
+                    log.warn("멱등키 재사용 감지: idempotencyKey={}, 기존userId={}, 요청userId={}",
+                            idempotencyKey, existingOrder.getUserId(), userId);
+                    throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REUSE);
+                }
+                // 동일 요청 → 기존 주문 응답 반환
+                log.info("멱등키로 기존 주문 반환: orderId={}", existingOrder.getPaymentOrderId());
+                return new OrderResponse(existingOrder.getPaymentOrderId(), existingOrder.getAmount(), clientKey);
+            }
+        }
 
         // 1. UUID로 고유한 주문 ID 생성
         String orderId = UUID.randomUUID().toString();
@@ -114,13 +145,14 @@ public class PaymentService {
         PaymentOrder.OrderType orderType = PaymentOrder.OrderType.valueOf(
                 request.orderType().toUpperCase());
 
-        // 3. PaymentOrder 빌더 구성
+        // 3. PaymentOrder 빌더 구성 — JWT에서 추출한 userId 사용 (BOLA 방지)
         PaymentOrder.PaymentOrderBuilder builder = PaymentOrder.builder()
-                .orderId(orderId)
-                .userId(request.userId())
+                .paymentOrderId(orderId)
+                .userId(userId)
                 .orderType(orderType)
                 .amount(request.amount())
                 .pointsAmount(request.pointsAmount())
+                .idempotencyKey(idempotencyKey != null && !idempotencyKey.isBlank() ? idempotencyKey : null)
                 .status(PaymentOrder.OrderStatus.PENDING);
 
         // 4. 구독인 경우 plan 조회 및 연결
@@ -144,7 +176,7 @@ public class PaymentService {
         orderRepository.save(builder.build());
 
         log.info("주문 생성 완료: orderId={}, userId={}, orderType={}, amount={}",
-                orderId, request.userId(), orderType, request.amount());
+                orderId, userId, orderType, request.amount());
 
         // 6. orderId + clientKey 반환 (클라이언트가 결제창에 사용)
         return new OrderResponse(orderId, request.amount(), clientKey);
@@ -178,16 +210,38 @@ public class PaymentService {
      * @throws BusinessException 주문 미발견(ORDER_NOT_FOUND), 중복 처리(DUPLICATE_ORDER),
      *                           금액 불일치(PAYMENT_FAILED), PG 승인 실패(PAYMENT_FAILED)
      */
+    /**
+     * 결제 승인 + 포인트 지급을 처리한다.
+     *
+     * <p>Toss API 호출은 트랜잭션 외부에서 수행하고,
+     * DB 저장 실패 시 Toss 결제를 취소하는 보상 트랜잭션을 실행한다.</p>
+     */
+    /**
+     * 결제 승인 + 포인트 지급을 처리한다.
+     *
+     * <p>Toss API 호출은 트랜잭션 외부에서 수행하고,
+     * DB 저장은 @Transactional 메서드에서 직접 처리한다.
+     * (Spring AOP 프록시 제약으로 같은 클래스 내 @Transactional 메서드를
+     *  내부 호출하면 트랜잭션이 적용되지 않으므로, 이 메서드 자체에
+     *  DB 저장 로직을 포함한다.)</p>
+     */
     @Transactional
-    public ConfirmResponse confirmPayment(ConfirmRequest request) {
-        log.info("결제 승인 시작: orderId={}, amount={}", request.orderId(), request.amount());
+    public ConfirmResponse confirmPayment(String userId, ConfirmRequest request) {
+        log.info("결제 승인 시작: userId={}, orderId={}, amount={}", userId, request.orderId(), request.amount());
 
-        // 1. 주문 조회
-        PaymentOrder order = orderRepository.findByOrderId(request.orderId())
+        // 1. 주문 조회 + 검증
+        PaymentOrder order = orderRepository.findByPaymentOrderId(request.orderId())
                 .orElseThrow(() -> {
                     log.error("주문 조회 실패: orderId={}", request.orderId());
                     return new BusinessException(ErrorCode.ORDER_NOT_FOUND);
                 });
+
+        // 1-1. 주문 소유자 검증 (BOLA 방지 — 타인의 주문을 승인할 수 없음)
+        if (!order.getUserId().equals(userId)) {
+            log.error("주문 소유자 불일치: orderId={}, 주문소유자={}, 요청자={}",
+                    request.orderId(), order.getUserId(), userId);
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
 
         // 2. 이미 처리된 주문 방지 (멱등성 보장)
         if (order.getStatus() != PaymentOrder.OrderStatus.PENDING) {
@@ -196,8 +250,8 @@ public class PaymentService {
             throw new BusinessException(ErrorCode.DUPLICATE_ORDER);
         }
 
-        // 3. 금액 일치 검증 (위변조 방지)
-        if (order.getAmount() != request.amount()) {
+        // 3. 금액 일치 검증 (위변조 방지) — Integer는 equals()로 비교해야 함
+        if (!order.getAmount().equals(request.amount())) {
             log.error("결제 금액 불일치: orderId={}, 주문금액={}, 요청금액={}",
                     request.orderId(), order.getAmount(), request.amount());
             throw new BusinessException(
@@ -206,46 +260,51 @@ public class PaymentService {
             );
         }
 
-        // 4. Toss Payments 결제 승인 API 호출
-        TossPaymentsClient.TossConfirmResponse tossResponse =
-                tossClient.confirmPayment(request.paymentKey(), request.orderId(), request.amount());
+        // 4. Toss Payments 결제 승인 API 호출 (외부 API이므로 실패해도 DB 롤백 불필요)
+        tossClient.confirmPayment(request.paymentKey(), request.orderId(), request.amount());
 
-        // 5. 주문 완료 처리 (도메인 메서드: status=COMPLETED, pgTransactionId, pgProvider, completedAt 기록)
-        order.complete(request.paymentKey(), "TOSS");
-        log.info("주문 상태 변경: orderId={}, PENDING → COMPLETED", request.orderId());
+        // 5. DB 상태 변경 + 포인트 지급 (같은 트랜잭션 내에서 원자적 처리)
+        try {
+            // 주문 완료 처리 (status=COMPLETED, pgTransactionId, pgProvider, completedAt)
+            order.complete(request.paymentKey(), "TOSS");
+            log.info("주문 상태 변경: orderId={}, PENDING → COMPLETED", order.getPaymentOrderId());
 
-        // 6. 포인트 지급
-        int pointsToGrant = order.getPointsAmount() != null ? order.getPointsAmount() : 0;
-        String description = order.getOrderType() == PaymentOrder.OrderType.SUBSCRIPTION
-                ? "구독 포인트 지급" : "포인트팩 구매";
+            // 포인트 지급
+            int pointsToGrant = order.getPointsAmount() != null ? order.getPointsAmount() : 0;
+            String description = order.getOrderType() == PaymentOrder.OrderType.SUBSCRIPTION
+                    ? "구독 포인트 지급" : "포인트팩 구매";
 
-        PointDto.EarnResponse earnResult = null;
-        if (pointsToGrant > 0) {
-            earnResult = pointService.earnPoint(
-                    order.getUserId(),
-                    pointsToGrant,
-                    "earn",
-                    description,
-                    order.getOrderId()
-            );
-            log.info("포인트 지급 완료: userId={}, points={}, newBalance={}",
-                    order.getUserId(), pointsToGrant,
-                    earnResult != null ? earnResult.balanceAfter() : "N/A");
+            PointDto.EarnResponse earnResult = null;
+            if (pointsToGrant > 0) {
+                earnResult = pointService.earnPoint(
+                        order.getUserId(),
+                        pointsToGrant,
+                        "earn",
+                        description,
+                        order.getPaymentOrderId()
+                );
+                log.info("포인트 지급 완료: userId={}, points={}, newBalance={}",
+                        order.getUserId(), pointsToGrant,
+                        earnResult != null ? earnResult.balanceAfter() : "N/A");
+            }
+
+            // 구독 결제인 경우 UserSubscription 생성
+            if (order.getOrderType() == PaymentOrder.OrderType.SUBSCRIPTION && order.getPlan() != null) {
+                subscriptionService.createSubscription(order.getUserId(), order.getPlan());
+                log.info("구독 활성화: userId={}, plan={}", order.getUserId(), order.getPlan().getPlanCode());
+            }
+
+            int newBalance = earnResult != null ? earnResult.balanceAfter() : 0;
+            log.info("결제 승인 완료: orderId={}, pointsGranted={}, newBalance={}",
+                    order.getPaymentOrderId(), pointsToGrant, newBalance);
+
+            return new ConfirmResponse(true, pointsToGrant, newBalance);
+        } catch (Exception e) {
+            // DB 저장 실패 → Toss 결제를 취소하여 보상 (사용자가 돈을 냈는데 포인트를 못 받는 상황 방지)
+            log.error("DB 저장 실패, Toss 결제 보상 취소 시도: orderId={}, error={}", request.orderId(), e.getMessage());
+            tossClient.cancelPayment(request.paymentKey(), "서버 내부 오류로 인한 자동 취소");
+            throw e;
         }
-
-        // 7. 구독 결제인 경우 UserSubscription 생성
-        if (order.getOrderType() == PaymentOrder.OrderType.SUBSCRIPTION && order.getPlan() != null) {
-            subscriptionService.createSubscription(order.getUserId(), order.getPlan());
-            log.info("구독 활성화: userId={}, plan={}", order.getUserId(), order.getPlan().getPlanCode());
-        }
-
-        // 8. 응답 반환
-        int newBalance = earnResult != null ? earnResult.balanceAfter() : 0;
-
-        log.info("결제 승인 완료: orderId={}, pointsGranted={}, newBalance={}",
-                request.orderId(), pointsToGrant, newBalance);
-
-        return new ConfirmResponse(true, pointsToGrant, newBalance);
     }
 
     // ──────────────────────────────────────────────
@@ -272,6 +331,28 @@ public class PaymentService {
     }
 
     // ──────────────────────────────────────────────
+    // 웹훅 처리
+    // ──────────────────────────────────────────────
+
+    /**
+     * Toss 웹훅 서명을 검증하고 이벤트를 처리한다.
+     *
+     * <p>서명 검증 실패 시 INVALID_WEBHOOK_SIGNATURE 에러를 던진다.
+     * 검증 통과 후 이벤트 로깅을 수행한다 (향후 결제 확인 자동화 확장).</p>
+     *
+     * @param rawBody   웹훅 요청 Body 원문
+     * @param signature TossPayments-Signature 헤더 값
+     * @throws BusinessException 서명 검증 실패 시 (INVALID_WEBHOOK_SIGNATURE)
+     */
+    public void verifyAndProcessWebhook(String rawBody, String signature) {
+        if (!tossClient.verifyWebhookSignature(rawBody, signature)) {
+            log.error("Toss 웹훅 서명 검증 실패");
+            throw new BusinessException(ErrorCode.INVALID_WEBHOOK_SIGNATURE);
+        }
+        log.info("Toss 웹훅 수신 (서명 검증 통과): body={}", rawBody);
+    }
+
+    // ──────────────────────────────────────────────
     // private 헬퍼
     // ──────────────────────────────────────────────
 
@@ -283,7 +364,7 @@ public class PaymentService {
      */
     private OrderHistoryResponse toHistoryResponse(PaymentOrder order) {
         return new OrderHistoryResponse(
-                order.getOrderId(),
+                order.getPaymentOrderId(),
                 order.getOrderType().name(),
                 order.getAmount(),
                 order.getPointsAmount(),

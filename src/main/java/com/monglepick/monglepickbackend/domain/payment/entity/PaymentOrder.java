@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.payment.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+/* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -23,9 +24,16 @@ import java.time.LocalDateTime;
  * 결제 주문 엔티티 — payment_orders 테이블 매핑.
  *
  * <p>Toss Payments 결제를 추적하는 테이블.
- * {@code orderId}는 UUID로 직접 생성하여 PG에 전달하며, PK로 사용한다.
+ * {@code paymentOrderId}는 UUID로 직접 생성하여 PG에 전달하며, PK로 사용한다.
  * AUTO_INCREMENT가 아닌 VARCHAR(50) PK이므로 {@code @GeneratedValue} 없이
  * 서비스 레이어에서 UUID를 생성하여 설정한다.</p>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>2026-03-24: BaseTimeEntity → BaseAuditEntity 변경 (created_by/updated_by 추가)</li>
+ *   <li>2026-03-24: PK 필드명 orderId → paymentOrderId 로 변경, @Column(name = "payment_order_id") 추가</li>
+ *   <li>2026-03-24: FK 필드 plan의 @JoinColumn(name = "plan_id") → @JoinColumn(name = "subscription_plan_id") 변경</li>
+ * </ul>
  *
  * <h3>상태 전이 (State Transition)</h3>
  * <pre>
@@ -37,7 +45,7 @@ import java.time.LocalDateTime;
  * <h3>주문 유형 (OrderType)</h3>
  * <ul>
  *   <li>{@code POINT_PACK} — 포인트팩 구매 (일회성, pointsAmount에 지급 포인트 수량)</li>
- *   <li>{@code SUBSCRIPTION} — 구독 결제 (planId에 구독 상품 참조)</li>
+ *   <li>{@code SUBSCRIPTION} — 구독 결제 (plan에 구독 상품 참조)</li>
  * </ul>
  *
  * <h3>도메인 메서드</h3>
@@ -55,14 +63,16 @@ import java.time.LocalDateTime;
         indexes = {
                 @Index(name = "idx_order_user", columnList = "user_id"),
                 @Index(name = "idx_order_status", columnList = "status"),
-                @Index(name = "idx_order_created", columnList = "created_at")
+                @Index(name = "idx_order_created", columnList = "created_at"),
+                @Index(name = "uk_order_idempotency", columnList = "idempotency_key", unique = true)
         }
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class PaymentOrder extends BaseTimeEntity {
+/* BaseTimeEntity → BaseAuditEntity 변경: created_by, updated_by 컬럼 추가 관리 */
+public class PaymentOrder extends BaseAuditEntity {
 
     // ──────────────────────────────────────────────
     // PK — UUID 직접 생성 (AUTO_INCREMENT 아님)
@@ -73,10 +83,12 @@ public class PaymentOrder extends BaseTimeEntity {
      * PG사에 전달되는 고유 주문 번호.
      * 서비스 레이어에서 {@code UUID.randomUUID().toString()} 등으로 생성한다.
      * AUTO_INCREMENT가 아니므로 {@code @GeneratedValue} 없이 직접 설정.
+     * 기존 필드명 'orderId'에서 'paymentOrderId'로 변경하여 엔티티 식별 명확화.
+     * 기존 컬럼명 'order_id'에서 'payment_order_id'로 변경.
      */
     @Id
-    @Column(name = "order_id", length = 50)
-    private String orderId;
+    @Column(name = "payment_order_id", length = 50)
+    private String paymentOrderId;
 
     // ──────────────────────────────────────────────
     // 주문 기본 정보
@@ -114,13 +126,22 @@ public class PaymentOrder extends BaseTimeEntity {
     private Integer pointsAmount;
 
     /**
-     * 구독 상품 (FK → subscription_plans.plan_id, nullable).
+     * 구독 상품 (FK → subscription_plans.subscription_plan_id, nullable).
      * 구독 결제인 경우에만 설정. 포인트팩 주문에서는 null.
      * LAZY 로딩으로 N+1 쿼리를 방지한다.
+     * 기존 @JoinColumn(name = "plan_id") → @JoinColumn(name = "subscription_plan_id")로 변경.
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "plan_id")
+    @JoinColumn(name = "subscription_plan_id")
     private SubscriptionPlan plan;
+
+    /**
+     * 멱등키 (VARCHAR(100), UNIQUE, nullable).
+     * 클라이언트가 Idempotency-Key 헤더로 전달하는 UUID.
+     * 동일 멱등키로 중복 주문 생성을 방지하여 네트워크 재시도 안전성을 보장한다.
+     */
+    @Column(name = "idempotency_key", length = 100, unique = true)
+    private String idempotencyKey;
 
     // ──────────────────────────────────────────────
     // 주문 상태

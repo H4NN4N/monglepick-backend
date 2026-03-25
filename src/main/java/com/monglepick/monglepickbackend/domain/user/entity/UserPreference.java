@@ -1,5 +1,6 @@
 package com.monglepick.monglepickbackend.domain.user.entity;
 
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -8,15 +9,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /**
  * 사용자 선호도 엔티티
@@ -31,12 +28,18 @@ import java.time.LocalDateTime;
 @Table(name = "user_preferences")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class UserPreference {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — 수동 createdAt/updatedAt 필드 및 @PrePersist/@PreUpdate 메서드 제거됨
+ * — PK 필드명: id → preferenceId로 변경 (DDL 컬럼명 preference_id 매핑)
+ */
+public class UserPreference extends BaseAuditEntity {
 
-    /** 선호도 고유 식별자 */
+    /** 선호도 고유 식별자 (PK, BIGINT AUTO_INCREMENT, 컬럼명: preference_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "preference_id")
+    private Long preferenceId;
 
     /** 선호도 소유 사용자 (지연 로딩) */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -71,13 +74,7 @@ public class UserPreference {
     @Column(name = "excluded_keywords", columnDefinition = "JSON")
     private String excludedKeywords;
 
-    /** 선호도 생성 시각 */
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    /** 선호도 수정 시각 */
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
+    /* created_at, updated_at은 BaseAuditEntity(→BaseTimeEntity)에서 자동 관리 — 수동 필드 제거됨 */
 
     @Builder
     public UserPreference(User user, String preferredGenres, String preferredMoods,
@@ -89,16 +86,7 @@ public class UserPreference {
         this.excludedKeywords = excludedKeywords;
     }
 
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
+    /* @PrePersist/@PreUpdate 제거됨 — BaseTimeEntity의 @CreationTimestamp/@UpdateTimestamp로 자동 관리 */
 
     /** 선호 장르 업데이트 */
     public void updatePreferredGenres(String preferredGenres) {

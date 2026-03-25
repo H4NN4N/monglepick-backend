@@ -3,6 +3,7 @@ package com.monglepick.monglepickbackend.domain.community.service;
 import com.monglepick.monglepickbackend.domain.community.dto.PostCreateRequest;
 import com.monglepick.monglepickbackend.domain.community.dto.PostResponse;
 import com.monglepick.monglepickbackend.domain.community.entity.Post;
+import com.monglepick.monglepickbackend.domain.community.entity.PostStatus;
 import com.monglepick.monglepickbackend.domain.user.entity.User;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
@@ -18,8 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 게시글 서비스
  *
- * <p>게시글의 CRUD 비즈니스 로직을 처리합니다.
- * 게시글 작성/수정/삭제 시 작성자 검증을 수행합니다.</p>
+ * <p>게시글의 CRUD + 임시저장(DRAFT) 비즈니스 로직을 처리합니다.
+ * Downloads POST 파일의 임시저장/게시 기능을 통합하였습니다.</p>
  */
 @Slf4j
 @Service
@@ -30,12 +31,12 @@ public class PostService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
 
+    // ──────────────────────────────────────────────
+    // 게시글 CRUD (기존 기능)
+    // ──────────────────────────────────────────────
+
     /**
-     * 게시글을 작성합니다.
-     *
-     * @param request 게시글 작성 요청 (제목, 내용, 카테고리)
-     * @param userId 작성자 ID (JWT에서 추출)
-     * @return 생성된 게시글 응답 DTO
+     * 게시글을 작성합니다 (바로 게시).
      */
     @Transactional
     public PostResponse createPost(PostCreateRequest request, String userId) {
@@ -47,11 +48,12 @@ public class PostService {
                 .title(request.title())
                 .content(request.content())
                 .category(category)
+                .status(PostStatus.PUBLISHED)
                 .build();
 
         Post savedPost = postRepository.save(post);
-        log.info("게시글 작성 완료 - postId: {}, userId: {}, category: {}",
-                savedPost.getId(), userId, category);
+        log.info("게시글 작성 완료 — postId: {}, userId: {}, category: {}",
+                savedPost.getPostId(), userId, category);
 
         return PostResponse.from(savedPost);
     }
@@ -61,20 +63,22 @@ public class PostService {
      */
     @Transactional
     public PostResponse getPost(Long postId) {
+        postRepository.incrementViewCount(postId);
         Post post = findPostById(postId);
-        post.incrementViewCount();
         return PostResponse.from(post);
     }
 
     /**
-     * 카테고리별 게시글 목록을 조회합니다.
+     * 카테고리별 게시글 목록을 조회합니다 (게시 완료된 글만).
      */
     public Page<PostResponse> getPosts(String category, Pageable pageable) {
         if (category != null && !category.isBlank()) {
             Post.Category cat = Post.Category.valueOf(category.toUpperCase());
-            return postRepository.findByCategory(cat, pageable).map(PostResponse::from);
+            return postRepository.findByCategoryAndStatus(cat, PostStatus.PUBLISHED, pageable)
+                    .map(PostResponse::from);
         }
-        return postRepository.findAll(pageable).map(PostResponse::from);
+        return postRepository.findByStatus(PostStatus.PUBLISHED, pageable)
+                .map(PostResponse::from);
     }
 
     /**
@@ -88,7 +92,7 @@ public class PostService {
         Post.Category category = Post.Category.valueOf(request.category().toUpperCase());
         post.update(request.title(), request.content(), category);
 
-        log.info("게시글 수정 완료 - postId: {}, userId: {}", postId, userId);
+        log.info("게시글 수정 완료 — postId: {}, userId: {}", postId, userId);
         return PostResponse.from(post);
     }
 
@@ -101,22 +105,109 @@ public class PostService {
         validatePostOwner(post, userId);
 
         postRepository.delete(post);
-        log.info("게시글 삭제 완료 - postId: {}, userId: {}", postId, userId);
+        log.info("게시글 삭제 완료 — postId: {}, userId: {}", postId, userId);
     }
 
-    /** 사용자 ID로 사용자를 조회하는 헬퍼 */
+    // ──────────────────────────────────────────────
+    // 임시저장 기능 (Downloads POST 파일 적용)
+    // ──────────────────────────────────────────────
+
+    /**
+     * 게시글을 임시저장합니다.
+     */
+    @Transactional
+    public PostResponse createDraft(PostCreateRequest request, String userId) {
+        User user = findUserById(userId);
+        Post.Category category = Post.Category.valueOf(request.category().toUpperCase());
+
+        Post draft = Post.builder()
+                .user(user)
+                .title(request.title())
+                .content(request.content())
+                .category(category)
+                .status(PostStatus.DRAFT)
+                .build();
+
+        Post savedDraft = postRepository.save(draft);
+        log.info("임시저장 완료 — postId: {}, userId: {}", savedDraft.getPostId(), userId);
+
+        return PostResponse.from(savedDraft);
+    }
+
+    /**
+     * 사용자의 임시저장 목록을 조회합니다.
+     */
+    public Page<PostResponse> getDrafts(String userId, Pageable pageable) {
+        User user = findUserById(userId);
+        return postRepository.findByUserAndStatus(user, PostStatus.DRAFT, pageable)
+                .map(PostResponse::from);
+    }
+
+    /**
+     * 임시저장 게시글을 수정합니다.
+     */
+    @Transactional
+    public PostResponse updateDraft(Long postId, PostCreateRequest request, String userId) {
+        Post post = findPostById(postId);
+        validatePostOwner(post, userId);
+
+        if (post.getStatus() != PostStatus.DRAFT) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+
+        Post.Category category = Post.Category.valueOf(request.category().toUpperCase());
+        post.update(request.title(), request.content(), category);
+
+        return PostResponse.from(post);
+    }
+
+    /**
+     * 임시저장 게시글을 삭제합니다.
+     */
+    @Transactional
+    public void deleteDraft(Long postId, String userId) {
+        Post post = findPostById(postId);
+        validatePostOwner(post, userId);
+
+        if (post.getStatus() != PostStatus.DRAFT) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+
+        postRepository.delete(post);
+    }
+
+    /**
+     * 임시저장 게시글을 게시합니다 (DRAFT → PUBLISHED).
+     */
+    @Transactional
+    public PostResponse publishDraft(Long postId, String userId) {
+        Post post = findPostById(postId);
+        validatePostOwner(post, userId);
+
+        if (post.getStatus() != PostStatus.DRAFT) {
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+
+        post.publish();
+        log.info("임시저장 게시 완료 — postId: {}", postId);
+
+        return PostResponse.from(post);
+    }
+
+    // ──────────────────────────────────────────────
+    // Private 헬퍼 메서드
+    // ──────────────────────────────────────────────
+
     private User findUserById(String userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
-    /** 게시글 ID로 게시글을 조회하는 헬퍼 */
     private Post findPostById(Long postId) {
         return postRepository.findById(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
     }
 
-    /** 게시글 작성자와 요청자가 일치하는지 검증하는 헬퍼 */
     private void validatePostOwner(Post post, String userId) {
         if (!post.getUser().getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);

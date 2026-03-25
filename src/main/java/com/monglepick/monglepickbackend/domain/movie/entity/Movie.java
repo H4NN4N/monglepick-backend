@@ -1,5 +1,6 @@
 package com.monglepick.monglepickbackend.domain.movie.entity;
 
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -30,7 +31,10 @@ import lombok.NoArgsConstructor;
 @Table(name = "movies")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Movie {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ */
+public class Movie extends BaseAuditEntity {
 
     /** 영화 고유 식별자 (VARCHAR(50), DDL에서 PK로 관리) */
     @Id

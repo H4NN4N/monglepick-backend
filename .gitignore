@@ -35,3 +35,19 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Environment variables ###
+.env
+.env.*
+!.env.example
+
+### OS files ###
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+### Claude Code ###
+.claude/
+
+### Logs ###
+*.log

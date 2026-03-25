@@ -1,6 +1,7 @@
 package com.monglepick.monglepickbackend.domain.recommendation.entity;
 
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,9 +19,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 
 /**
  * 추천 피드백 엔티티 — recommendation_feedback 테이블 매핑.
@@ -46,12 +44,18 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class RecommendationFeedback {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — PK 필드명: id → recommendationFeedbackId로 변경 (DDL 컬럼명 recommendation_feedback_id 매핑)
+ * — 수동 @CreationTimestamp created_at 필드 제거됨
+ */
+public class RecommendationFeedback extends BaseAuditEntity {
 
-    /** 피드백 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 피드백 고유 ID (PK, BIGINT AUTO_INCREMENT, 컬럼명: recommendation_feedback_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "recommendation_feedback_id")
+    private Long recommendationFeedbackId;
 
     /**
      * 피드백을 남긴 사용자.
@@ -81,10 +85,7 @@ public class RecommendationFeedback {
     @Column(name = "comment", columnDefinition = "TEXT")
     private String comment;
 
-    /** 피드백 생성 시각 */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at은 BaseAuditEntity(→BaseTimeEntity)에서 자동 관리 — 수동 @CreationTimestamp 필드 제거됨 */
 
     /**
      * 추천 피드백 유형 열거형.

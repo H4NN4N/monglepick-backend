@@ -1,6 +1,8 @@
 package com.monglepick.monglepickbackend.domain.chat.entity;
 
 import com.monglepick.monglepickbackend.domain.user.entity.User;
+/* BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -15,7 +17,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -32,8 +33,8 @@ import java.time.LocalDateTime;
  *   <li>{@code messages} — 전체 대화 내역 (JSON 배열, 필수)</li>
  *   <li>{@code turnCount} — 대화 턴 수 (사용자 메시지 수)</li>
  *   <li>{@code intentSummary} — 세션 중 감지된 의도 요약 (JSON)</li>
- *   <li>{@code startedAt} — 세션 시작 시각</li>
- *   <li>{@code endedAt} — 세션 종료 시각 (아직 진행 중이면 NULL)</li>
+ *   <li>{@code startedAt} — 세션 시작 시각 (도메인 고유 필드, 유지)</li>
+ *   <li>{@code endedAt} — 세션 종료 시각 (도메인 고유 필드, 유지)</li>
  * </ul>
  *
  * <h3>messages JSON 구조</h3>
@@ -43,6 +44,14 @@ import java.time.LocalDateTime;
  *   {"role": "assistant", "content": "...", "timestamp": "...", "movies": [...]}
  * ]
  * </pre>
+ *
+ * <h3>변경 이력</h3>
+ * <ul>
+ *   <li>PK 필드명: id → chatSessionArchiveId (컬럼명: chat_session_archive_id)</li>
+ *   <li>BaseAuditEntity 상속 추가 — created_at/updated_at/created_by/updated_by 자동 관리</li>
+ *   <li>수동 createdAt 필드 및 @CreationTimestamp 제거 — BaseTimeEntity에서 상속</li>
+ *   <li>startedAt, endedAt 도메인 고유 타임스탬프는 유지 (@CreationTimestamp 제거)</li>
+ * </ul>
  */
 @Entity
 @Table(name = "chat_session_archive")
@@ -50,12 +59,16 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class ChatSessionArchive {
+public class ChatSessionArchive extends BaseAuditEntity {
 
-    /** 아카이브 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /**
+     * 아카이브 고유 ID (BIGINT AUTO_INCREMENT PK).
+     * 필드명 변경: id → chatSessionArchiveId (엔티티 PK 네이밍 통일)
+     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "chat_session_archive_id")
+    private Long chatSessionArchiveId;
 
     /**
      * 대화 참여 사용자.
@@ -91,20 +104,21 @@ public class ChatSessionArchive {
     @Column(name = "intent_summary", columnDefinition = "json")
     private String intentSummary;
 
-    /** 세션 시작 시각 */
-    @CreationTimestamp
+    /**
+     * 세션 시작 시각 (도메인 고유 타임스탬프).
+     * Redis 세션이 최초 생성된 시각을 기록한다.
+     * created_at(아카이빙 시각)과 별개로 유지된다.
+     */
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
     /**
-     * 세션 종료 시각.
+     * 세션 종료 시각 (도메인 고유 타임스탬프).
      * 세션이 아직 진행 중이면 NULL이다.
      */
     @Column(name = "ended_at")
     private LocalDateTime endedAt;
 
-    /** 레코드 생성 시각 (아카이빙 시각) */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at, updated_at → BaseTimeEntity에서 상속 (아카이빙 시각) */
+    /* created_by, updated_by → BaseAuditEntity에서 상속 */
 }

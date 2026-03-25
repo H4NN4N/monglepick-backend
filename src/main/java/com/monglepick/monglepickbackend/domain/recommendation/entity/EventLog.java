@@ -1,5 +1,6 @@
 package com.monglepick.monglepickbackend.domain.recommendation.entity;
 
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -11,9 +12,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 
 /**
  * 이벤트 로그 엔티티 — event_logs 테이블 매핑.
@@ -31,8 +29,8 @@ import java.time.LocalDateTime;
  * </ul>
  *
  * <h3>타임스탬프</h3>
- * <p>created_at만 존재하며 updated_at은 없다 (이벤트 로그 불변).
- * BaseTimeEntity를 상속하지 않고 {@code @CreationTimestamp}를 직접 사용한다.</p>
+ * <p>BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리.
+ * 기존 수동 @CreationTimestamp created_at 필드 제거됨.</p>
  */
 @Entity
 @Table(name = "event_logs")
@@ -40,12 +38,18 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class EventLog {
+/**
+ * BaseAuditEntity 상속: created_at, updated_at, created_by, updated_by 자동 관리
+ * — PK 필드명: id → eventLogId로 변경 (DDL 컬럼명 event_log_id 매핑)
+ * — 수동 @CreationTimestamp created_at 필드 제거됨
+ */
+public class EventLog extends BaseAuditEntity {
 
-    /** 이벤트 로그 고유 ID (BIGINT AUTO_INCREMENT PK) */
+    /** 이벤트 로그 고유 ID (PK, BIGINT AUTO_INCREMENT, 컬럼명: event_log_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "event_log_id")
+    private Long eventLogId;
 
     /**
      * 사용자 ID (VARCHAR(50), NOT NULL).
@@ -84,11 +88,5 @@ public class EventLog {
     @Column(name = "metadata", columnDefinition = "json")
     private String metadata;
 
-    /**
-     * 레코드 생성 시각.
-     * INSERT 시 자동 설정되며 이후 변경되지 않는다.
-     */
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    /* created_at은 BaseAuditEntity(→BaseTimeEntity)에서 자동 관리 — 수동 @CreationTimestamp 필드 제거됨 */
 }

@@ -1,11 +1,11 @@
 package com.monglepick.monglepickbackend.domain.reward.service;
 
+import com.monglepick.monglepickbackend.domain.reward.config.QuotaProperties;
 import com.monglepick.monglepickbackend.domain.reward.dto.QuotaDto;
 import com.monglepick.monglepickbackend.domain.reward.dto.QuotaDto.GradeQuota;
 import com.monglepick.monglepickbackend.domain.reward.dto.QuotaDto.QuotaCheckResult;
 import com.monglepick.monglepickbackend.domain.reward.repository.PointsHistoryRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -61,62 +61,33 @@ public class QuotaService {
     private final Map<String, GradeQuota> gradeQuotas;
 
     /**
-     * 쿼터 서비스 생성자 — application.yml에서 등급별 설정값을 주입받아 초기화한다.
+     * 쿼터 서비스 생성자 — QuotaProperties에서 등급별 설정값을 바인딩받아 초기화한다.
      *
-     * <p>{@code @Value} 어노테이션으로 각 등급의 4개 설정값(일일 한도, 월간 한도, 일일 무료 횟수,
-     * 최대 입력 길이)을 주입받는다. 총 16개 설정값이 주입되며, 이를 4개의 {@link GradeQuota}
-     * 레코드로 변환하여 불변 맵에 저장한다.</p>
+     * <p>기존 16개 @Value 파라미터 대신 {@link QuotaProperties}를 주입받아
+     * 생성자 파라미터를 2개로 축소한다.</p>
      *
-     * @param historyRepository   포인트 이력 리포지토리 (AI 추천 사용 횟수 카운트)
-     * @param bronzeDaily         BRONZE 등급 일일 AI 추천 한도 (기본값: 3)
-     * @param bronzeMonthly       BRONZE 등급 월간 AI 추천 한도 (기본값: 30)
-     * @param bronzeFree          BRONZE 등급 일일 무료 AI 추천 횟수 (기본값: 0)
-     * @param bronzeMaxInput      BRONZE 등급 최대 입력 글자 수 (기본값: 200)
-     * @param silverDaily         SILVER 등급 일일 AI 추천 한도 (기본값: 10)
-     * @param silverMonthly       SILVER 등급 월간 AI 추천 한도 (기본값: 200)
-     * @param silverFree          SILVER 등급 일일 무료 AI 추천 횟수 (기본값: 2)
-     * @param silverMaxInput      SILVER 등급 최대 입력 글자 수 (기본값: 500)
-     * @param goldDaily           GOLD 등급 일일 AI 추천 한도 (기본값: 30)
-     * @param goldMonthly         GOLD 등급 월간 AI 추천 한도 (기본값: 600)
-     * @param goldFree            GOLD 등급 일일 무료 AI 추천 횟수 (기본값: 5)
-     * @param goldMaxInput        GOLD 등급 최대 입력 글자 수 (기본값: 1000)
-     * @param platinumDaily       PLATINUM 등급 일일 AI 추천 한도 (기본값: -1, 무제한)
-     * @param platinumMonthly     PLATINUM 등급 월간 AI 추천 한도 (기본값: -1, 무제한)
-     * @param platinumFree        PLATINUM 등급 일일 무료 AI 추천 횟수 (기본값: 10)
-     * @param platinumMaxInput    PLATINUM 등급 최대 입력 글자 수 (기본값: 2000)
+     * @param historyRepository 포인트 이력 리포지토리 (AI 추천 사용 횟수 카운트)
+     * @param props             등급별 쿼터 설정 (@ConfigurationProperties 바인딩)
      */
-    public QuotaService(
-            PointsHistoryRepository historyRepository,
-            @Value("${app.quota.bronze.daily-limit}") int bronzeDaily,
-            @Value("${app.quota.bronze.monthly-limit}") int bronzeMonthly,
-            @Value("${app.quota.bronze.free-daily}") int bronzeFree,
-            @Value("${app.quota.bronze.max-input-length}") int bronzeMaxInput,
-            @Value("${app.quota.silver.daily-limit}") int silverDaily,
-            @Value("${app.quota.silver.monthly-limit}") int silverMonthly,
-            @Value("${app.quota.silver.free-daily}") int silverFree,
-            @Value("${app.quota.silver.max-input-length}") int silverMaxInput,
-            @Value("${app.quota.gold.daily-limit}") int goldDaily,
-            @Value("${app.quota.gold.monthly-limit}") int goldMonthly,
-            @Value("${app.quota.gold.free-daily}") int goldFree,
-            @Value("${app.quota.gold.max-input-length}") int goldMaxInput,
-            @Value("${app.quota.platinum.daily-limit}") int platinumDaily,
-            @Value("${app.quota.platinum.monthly-limit}") int platinumMonthly,
-            @Value("${app.quota.platinum.free-daily}") int platinumFree,
-            @Value("${app.quota.platinum.max-input-length}") int platinumMaxInput
-    ) {
+    public QuotaService(PointsHistoryRepository historyRepository, QuotaProperties props) {
         this.historyRepository = historyRepository;
 
-        // 등급별 쿼터 설정을 불변 맵으로 초기화
+        // QuotaProperties의 GradeConfig를 GradeQuota DTO로 변환하여 불변 맵 초기화
         this.gradeQuotas = Map.of(
-                "BRONZE", new GradeQuota(bronzeDaily, bronzeMonthly, bronzeFree, bronzeMaxInput),
-                "SILVER", new GradeQuota(silverDaily, silverMonthly, silverFree, silverMaxInput),
-                "GOLD", new GradeQuota(goldDaily, goldMonthly, goldFree, goldMaxInput),
-                "PLATINUM", new GradeQuota(platinumDaily, platinumMonthly, platinumFree, platinumMaxInput)
+                "BRONZE", toGradeQuota(props.bronze()),
+                "SILVER", toGradeQuota(props.silver()),
+                "GOLD", toGradeQuota(props.gold()),
+                "PLATINUM", toGradeQuota(props.platinum())
         );
 
         log.info("등급별 쿼터 설정 로드 완료: BRONZE={}, SILVER={}, GOLD={}, PLATINUM={}",
                 gradeQuotas.get("BRONZE"), gradeQuotas.get("SILVER"),
                 gradeQuotas.get("GOLD"), gradeQuotas.get("PLATINUM"));
+    }
+
+    /** QuotaProperties.GradeConfig → GradeQuota DTO 변환 헬퍼 */
+    private static GradeQuota toGradeQuota(QuotaProperties.GradeConfig config) {
+        return new GradeQuota(config.dailyLimit(), config.monthlyLimit(), config.freeDaily(), config.maxInputLength());
     }
 
     // ──────────────────────────────────────────────

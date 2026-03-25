@@ -30,7 +30,7 @@ public record ReviewResponse(
      */
     public static ReviewResponse from(Review review) {
         return new ReviewResponse(
-                review.getId(),
+                review.getReviewId(),  /* PK 필드명 변경: getId() → getReviewId() */
                 review.getMovieId(),
                 review.getRating(),
                 review.getContent(),

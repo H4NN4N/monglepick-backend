@@ -289,10 +289,10 @@ public class PointService {
         PointsHistory savedHistory = pointsHistoryRepository.save(history);
 
         log.info("포인트 차감 완료: userId={}, 차감={}, 잔액={}, historyId={}",
-                userId, amount, newBalance, savedHistory.getPointHistoryId());
+                userId, amount, newBalance, savedHistory.getPointsHistoryId());
 
         // 5. 응답 반환
-        return new DeductResponse(true, newBalance, savedHistory.getPointHistoryId());
+        return new DeductResponse(true, newBalance, savedHistory.getPointsHistoryId());
     }
 
     // ──────────────────────────────────────────────
@@ -498,7 +498,7 @@ public class PointService {
      */
     private HistoryResponse toHistoryResponse(PointsHistory history) {
         return new HistoryResponse(
-                history.getPointHistoryId(),
+                history.getPointsHistoryId(),
                 history.getPointChange(),
                 history.getPointAfter(),
                 history.getPointType(),

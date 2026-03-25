@@ -3,8 +3,9 @@ package com.monglepick.monglepickbackend.domain.user.service;
 import com.monglepick.monglepickbackend.domain.user.dto.UserResponse;
 import com.monglepick.monglepickbackend.domain.user.entity.User;
 import com.monglepick.monglepickbackend.domain.user.entity.UserPreference;
+import com.monglepick.monglepickbackend.domain.watchhistory.dto.WatchHistoryResponse;
+import com.monglepick.monglepickbackend.domain.watchhistory.dto.WishlistResponse;
 import com.monglepick.monglepickbackend.domain.watchhistory.entity.UserWishlist;
-import com.monglepick.monglepickbackend.domain.watchhistory.entity.WatchHistory;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import com.monglepick.monglepickbackend.domain.user.repository.UserPreferenceRepository;
@@ -60,9 +61,10 @@ public class UserService {
      * @param pageable 페이징 정보
      * @return 페이지 단위의 시청 이력
      */
-    public Page<WatchHistory> getWatchHistory(String userId, Pageable pageable) {
+    public Page<WatchHistoryResponse> getWatchHistory(String userId, Pageable pageable) {
         log.debug("시청 이력 조회 - userId: {}, page: {}", userId, pageable.getPageNumber());
-        return watchHistoryRepository.findByUser_UserId(userId, pageable);
+        return watchHistoryRepository.findByUser_UserId(userId, pageable)
+                .map(WatchHistoryResponse::from);
     }
 
     /**
@@ -72,9 +74,10 @@ public class UserService {
      * @param pageable 페이징 정보
      * @return 페이지 단위의 위시리스트
      */
-    public Page<UserWishlist> getWishlist(String userId, Pageable pageable) {
+    public Page<WishlistResponse> getWishlist(String userId, Pageable pageable) {
         log.debug("위시리스트 조회 - userId: {}", userId);
-        return userWishlistRepository.findByUser_UserId(userId, pageable);
+        return userWishlistRepository.findByUser_UserId(userId, pageable)
+                .map(WishlistResponse::from);
     }
 
     /**

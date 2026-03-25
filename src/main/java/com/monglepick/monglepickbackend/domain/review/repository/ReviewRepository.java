@@ -14,8 +14,11 @@ import java.util.List;
  * 중복 리뷰 방지를 위한 존재 여부 확인 메서드를 포함합니다.</p>
  */
 public interface ReviewRepository extends JpaRepository<Review, Long> {
-    /** 특정 영화의 리뷰 목록 조회 */
+    /** 특정 영화의 리뷰 목록 조회 (전체 — 소량 조회용) */
     List<Review> findByMovieId(String movieId);
+
+    /** 특정 영화의 리뷰 목록 페이징 조회 (대량 데이터 안전) */
+    Page<Review> findByMovieId(String movieId, Pageable pageable);
 
     /** 사용자별 리뷰 목록 조회 (마이페이지용) */
     Page<Review> findByUser_UserId(String userId, Pageable pageable);

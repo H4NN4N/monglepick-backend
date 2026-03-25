@@ -119,7 +119,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     /**
      * JWT 인증을 스킵할 경로인지 판별한다.
      *
-     * <p>헬스체크와 인증 관련 API는 JWT 검증이 불필요하다.</p>
+     * <p>헬스체크, 인증 관련 API, OAuth2 흐름 경로, JWT 토큰 교환/갱신은
+     * JWT 검증이 불필요하다.</p>
      *
      * @param request HTTP 요청 객체
      * @return 스킵 대상이면 true
@@ -127,7 +128,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.equals("/health") || path.startsWith("/api/v1/auth/");
+        return path.equals("/health")
+                || path.startsWith("/api/v1/auth/")
+                || path.startsWith("/oauth2/")
+                || path.startsWith("/login/oauth2/")
+                || path.startsWith("/login")
+                || path.startsWith("/jwt/");
     }
 
     /**

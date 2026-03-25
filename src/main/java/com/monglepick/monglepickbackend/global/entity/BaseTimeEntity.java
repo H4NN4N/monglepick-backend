@@ -1,12 +1,10 @@
 package com.monglepick.monglepickbackend.global.entity;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
 import lombok.Getter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -16,6 +14,9 @@ import java.time.LocalDateTime;
  * <p>대부분의 테이블이 created_at, updated_at 컬럼을 갖고 있으므로,
  * 이 클래스를 상속받아 자동으로 타임스탬프를 관리한다.</p>
  *
+ * <p>Hibernate의 {@code @CreationTimestamp}/{@code @UpdateTimestamp}를 사용한다.
+ * Spring Data JPA의 {@code AuditingEntityListener}는 사용하지 않는다 (이중 타임스탬프 방지).</p>
+ *
  * <ul>
  *   <li>{@code created_at} — 레코드 최초 생성 시각 (INSERT 시 자동 설정, 이후 변경 불가)</li>
  *   <li>{@code updated_at} — 레코드 최종 수정 시각 (UPDATE 시 자동 갱신)</li>
@@ -23,7 +24,6 @@ import java.time.LocalDateTime;
  */
 @Getter
 @MappedSuperclass
-@EntityListeners(AuditingEntityListener.class)
 public abstract class BaseTimeEntity {
 
     /**

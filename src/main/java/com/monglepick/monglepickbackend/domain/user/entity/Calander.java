@@ -1,6 +1,6 @@
 package com.monglepick.monglepickbackend.domain.user.entity;
 
-import com.monglepick.monglepickbackend.global.entity.BaseTimeEntity;
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -40,7 +40,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class Calander extends BaseTimeEntity {
+/**
+ * BaseTimeEntity → BaseAuditEntity로 변경: created_by, updated_by 감사 필드 추가 상속
+ */
+public class Calander extends BaseAuditEntity {
 
     /** 캘린더 일정 고유 ID (BIGINT AUTO_INCREMENT PK) */
     @Id
