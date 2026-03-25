@@ -81,4 +81,30 @@ public class ReviewService {
         return reviewRepository.findByMovieId(movieId, pageable)
                 .map(ReviewResponse::from);
     }
+
+    /**
+     * 리뷰를 삭제합니다. 작성자 본인만 삭제할 수 있습니다.
+     *
+     * @param reviewId 리뷰 ID
+     * @param userId   요청자 ID (JWT에서 추출)
+     * @throws BusinessException 리뷰 미존재(POST_NOT_FOUND) 또는 권한 없음(POST_ACCESS_DENIED)
+     */
+    @Transactional
+    public void deleteReview(Long reviewId, String userId) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> {
+                    log.warn("리뷰 삭제 실패 - 리뷰 없음: reviewId={}", reviewId);
+                    return new BusinessException(ErrorCode.POST_NOT_FOUND);
+                });
+
+        /* 작성자 본인 확인 */
+        if (!review.getUser().getUserId().equals(userId)) {
+            log.warn("리뷰 삭제 실패 - 권한 없음: reviewId={}, 작성자={}, 요청자={}",
+                    reviewId, review.getUser().getUserId(), userId);
+            throw new BusinessException(ErrorCode.POST_ACCESS_DENIED);
+        }
+
+        reviewRepository.delete(review);
+        log.info("리뷰 삭제 완료 - reviewId: {}, userId: {}", reviewId, userId);
+    }
 }

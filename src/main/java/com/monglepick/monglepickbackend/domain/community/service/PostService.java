@@ -74,10 +74,10 @@ public class PostService {
     public Page<PostResponse> getPosts(String category, Pageable pageable) {
         if (category != null && !category.isBlank()) {
             Post.Category cat = Post.Category.valueOf(category.toUpperCase());
-            return postRepository.findByCategoryAndStatus(cat, PostStatus.PUBLISHED, pageable)
+            return postRepository.findByCategoryAndStatusWithUser(cat, PostStatus.PUBLISHED, pageable)
                     .map(PostResponse::from);
         }
-        return postRepository.findByStatus(PostStatus.PUBLISHED, pageable)
+        return postRepository.findByStatusWithUser(PostStatus.PUBLISHED, pageable)
                 .map(PostResponse::from);
     }
 

@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -38,7 +39,13 @@ import lombok.NoArgsConstructor;
  * </ul>
  */
 @Entity
-@Table(name = "points_history")
+@Table(
+        name = "points_history",
+        indexes = {
+                @Index(name = "idx_history_user_created", columnList = "user_id, created_at"),
+                @Index(name = "idx_history_user_type", columnList = "user_id, point_type")
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor

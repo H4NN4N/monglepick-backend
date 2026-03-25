@@ -9,6 +9,8 @@ import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +63,7 @@ public class PointItemService {
      *
      * @return 활성 아이템 목록 (가격 오름차순, 없으면 빈 리스트)
      */
+    @Cacheable(value = "pointItems", key = "'all'")
     public List<PointItemResponse> getActiveItems() {
         log.debug("전체 활성 아이템 목록 조회");
 
@@ -82,6 +85,7 @@ public class PointItemService {
      * @param category 아이템 카테고리 (예: "general", "coupon", "avatar", "ai")
      * @return 해당 카테고리의 활성 아이템 목록 (가격 오름차순, 없으면 빈 리스트)
      */
+    @Cacheable(value = "pointItems", key = "#category")
     public List<PointItemResponse> getItemsByCategory(String category) {
         log.debug("카테고리별 아이템 목록 조회: category={}", category);
 

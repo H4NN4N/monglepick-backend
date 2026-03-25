@@ -2,6 +2,9 @@ package com.monglepick.monglepickbackend.domain.auth.filter;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.monglepick.monglepickbackend.global.constants.AppConstants;
+import com.monglepick.monglepickbackend.global.exception.ErrorCode;
+import com.monglepick.monglepickbackend.global.exception.ErrorResponse;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletInputStream;
@@ -30,6 +33,9 @@ import java.util.Map;
  * <p>인터셉트 경로: POST /api/v1/auth/login</p>
  */
 public class LoginFilter extends AbstractAuthenticationProcessingFilter {
+
+    /** JSON 직렬화를 위한 ObjectMapper (스레드 안전, 클래스 로딩 시 1회 초기화) */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final AuthenticationSuccessHandler successHandler;
 
@@ -62,10 +68,9 @@ public class LoginFilter extends AbstractAuthenticationProcessingFilter {
 
         Map<String, String> loginMap;
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
             ServletInputStream inputStream = request.getInputStream();
             String messageBody = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
-            loginMap = objectMapper.readValue(messageBody, new TypeReference<>() {
+            loginMap = OBJECT_MAPPER.readValue(messageBody, new TypeReference<>() {
             });
         } catch (IOException e) {
             throw new RuntimeException("로그인 요청 파싱 실패", e);
@@ -103,8 +108,10 @@ public class LoginFilter extends AbstractAuthenticationProcessingFilter {
     protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response,
                                                AuthenticationException failed) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"code\":\"A003\",\"message\":\"이메일 또는 비밀번호가 올바르지 않습니다\"}");
+        response.setContentType(AppConstants.CONTENT_TYPE_JSON);
+        // ErrorResponse 통일 형식 사용 (ServiceKeyAuthFilter와 동일한 패턴)
+        ErrorResponse errorResponse = ErrorResponse.of(ErrorCode.INVALID_CREDENTIALS);
+        OBJECT_MAPPER.writeValue(response.getWriter(), errorResponse);
     }
 
     /**

@@ -270,7 +270,7 @@ public class AuthService extends DefaultOAuth2UserService implements UserDetails
      * (회원가입 시 사용 — 로그인은 LoginSuccessHandler에서 처리)
      */
     private AuthResponse buildAuthResponse(User user) {
-        String accessToken = jwtTokenProvider.generateAccessToken(user.getUserId(), user.getUserRole());
+        String accessToken = jwtTokenProvider.generateAccessToken(user.getUserId(), user.getUserRole().name());
         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getUserId());
 
         UserInfo userInfo = new UserInfo(
@@ -279,7 +279,7 @@ public class AuthService extends DefaultOAuth2UserService implements UserDetails
                 user.getNickname(),
                 user.getProfileImage(),
                 user.getProvider().name(),
-                user.getUserRole()
+                user.getUserRole().name()
         );
 
         return new AuthResponse(accessToken, refreshToken, userInfo);

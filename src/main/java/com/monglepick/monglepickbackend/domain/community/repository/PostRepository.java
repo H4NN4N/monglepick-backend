@@ -34,6 +34,14 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     /** 사용자 + 상태별 게시글 조회 (임시저장 목록) */
     Page<Post> findByUserAndStatus(User user, PostStatus status, Pageable pageable);
 
+    /** 상태별 전체 게시글 조회 + User 즉시 로딩 (N+1 방지) */
+    @Query("SELECT p FROM Post p JOIN FETCH p.user WHERE p.status = :status")
+    Page<Post> findByStatusWithUser(@Param("status") PostStatus status, Pageable pageable);
+
+    /** 카테고리 + 상태별 게시글 조회 + User 즉시 로딩 (N+1 방지) */
+    @Query("SELECT p FROM Post p JOIN FETCH p.user WHERE p.category = :category AND p.status = :status")
+    Page<Post> findByCategoryAndStatusWithUser(@Param("category") Post.Category category, @Param("status") PostStatus status, Pageable pageable);
+
     /** 조회수 원자적 증가 (단일 UPDATE 쿼리, write lock 최소화) */
     @Modifying
     @Transactional

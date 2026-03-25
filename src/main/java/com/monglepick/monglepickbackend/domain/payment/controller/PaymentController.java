@@ -6,8 +6,7 @@ import com.monglepick.monglepickbackend.domain.payment.dto.PaymentDto.CreateOrde
 import com.monglepick.monglepickbackend.domain.payment.dto.PaymentDto.OrderHistoryResponse;
 import com.monglepick.monglepickbackend.domain.payment.dto.PaymentDto.OrderResponse;
 import com.monglepick.monglepickbackend.domain.payment.service.PaymentService;
-import com.monglepick.monglepickbackend.global.exception.BusinessException;
-import com.monglepick.monglepickbackend.global.exception.ErrorCode;
+import com.monglepick.monglepickbackend.global.controller.BaseController;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -44,7 +43,7 @@ import java.security.Principal;
 @RequestMapping("/api/v1/payment")
 @Slf4j
 @RequiredArgsConstructor
-public class PaymentController {
+public class PaymentController extends BaseController {
 
     /** 결제 서비스 */
     private final PaymentService paymentService;
@@ -142,9 +141,8 @@ public class PaymentController {
         log.debug("결제 내역 조회 API 호출: userId={}, page={}, size={}", userId, page, size);
 
         // 페이지 크기 상한 제한 (과도한 요청으로 인한 DB 과부하 방지)
-        int safeSize = Math.min(size, 100);
         Page<OrderHistoryResponse> orders = paymentService.getOrderHistory(
-                userId, PageRequest.of(page, safeSize));
+                userId, PageRequest.of(page, limitPageSize(size)));
         return ResponseEntity.ok(orders);
     }
 
@@ -174,18 +172,4 @@ public class PaymentController {
         return ResponseEntity.ok().build();
     }
 
-    // ──────────────────────────────────────────────
-    // private 헬퍼
-    // ──────────────────────────────────────────────
-
-    /**
-     * Principal에서 userId를 안전하게 추출한다.
-     * null인 경우 UNAUTHORIZED 예외를 던진다 (NPE 방지).
-     */
-    private String resolveUserId(Principal principal) {
-        if (principal == null || principal.getName() == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
-        }
-        return principal.getName();
-    }
 }

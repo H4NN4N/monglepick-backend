@@ -11,6 +11,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.monglepick.monglepickbackend.global.constants.AppConstants;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -51,10 +53,10 @@ import java.util.Map;
 public class ServiceKeyAuthFilter extends OncePerRequestFilter {
 
     /** 요청 헤더에서 서비스 키를 읽을 때 사용하는 헤더 이름 */
-    private static final String SERVICE_KEY_HEADER = "X-Service-Key";
+    private static final String SERVICE_KEY_HEADER = AppConstants.HEADER_SERVICE_KEY;
 
-    /** 서비스 키 인증 시 principal로 사용하는 식별자 (PointController.resolveUserId와 일치해야 함) */
-    public static final String SERVICE_PRINCIPAL = "service";
+    /** 서비스 키 인증 시 principal로 사용하는 식별자 (BaseController.resolveUserIdWithServiceKey와 일치) */
+    public static final String SERVICE_PRINCIPAL = AppConstants.SERVICE_PRINCIPAL;
 
     /** 401 응답 시 사용할 에러 코드 (ErrorCode.INVALID_SERVICE_KEY와 동일) */
     private static final String ERROR_CODE = "S001";
@@ -126,7 +128,7 @@ public class ServiceKeyAuthFilter extends OncePerRequestFilter {
 
         // ── 4단계: 헤더가 있지만 서비스 키 불일치 → 401 Unauthorized 즉시 반환 ──
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json;charset=UTF-8");
+        response.setContentType(AppConstants.CONTENT_TYPE_JSON);
 
         // ErrorResponse 형태의 JSON 응답 작성
         ErrorResponse errorResponse = new ErrorResponse(

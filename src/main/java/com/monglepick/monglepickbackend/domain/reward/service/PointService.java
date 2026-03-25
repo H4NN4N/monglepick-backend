@@ -6,6 +6,7 @@ import com.monglepick.monglepickbackend.domain.reward.dto.PointDto.DeductRespons
 import com.monglepick.monglepickbackend.domain.reward.dto.PointDto.EarnResponse;
 import com.monglepick.monglepickbackend.domain.reward.dto.PointDto.HistoryResponse;
 import com.monglepick.monglepickbackend.domain.reward.dto.QuotaDto.QuotaCheckResult;
+import com.monglepick.monglepickbackend.global.constants.UserGrade;
 import com.monglepick.monglepickbackend.domain.reward.entity.PointsHistory;
 import com.monglepick.monglepickbackend.domain.reward.entity.UserPoint;
 import com.monglepick.monglepickbackend.domain.reward.repository.PointsHistoryRepository;
@@ -72,21 +73,27 @@ public class PointService {
      */
     private final QuotaService quotaService;
 
-    // ──────────────────────────────────────────────
-    // 등급별 상수 정의
-    // ──────────────────────────────────────────────
-
-    /** SILVER 등급 승급 기준 누적 포인트 */
-    private static final int SILVER_THRESHOLD = 1_000;
-
-    /** GOLD 등급 승급 기준 누적 포인트 */
-    private static final int GOLD_THRESHOLD = 5_000;
-
-    /** PLATINUM 등급 승급 기준 누적 포인트 */
-    private static final int PLATINUM_THRESHOLD = 20_000;
-
+    // 등급별 상수는 UserGrade enum으로 이전됨 (global/constants/UserGrade.java)
     // maxInputLength 상수는 Phase R-3에서 QuotaService로 이전됨
-    // (application.yml의 app.quota.*.max-input-length에서 관리)
+
+    // ──────────────────────────────────────────────
+    // 입력 검증 헬퍼
+    // ──────────────────────────────────────────────
+
+    /**
+     * userId가 null이거나 공백인지 검증한다.
+     *
+     * <p>Controller의 resolveUserId()에서 1차 검증하지만,
+     * 서비스 레이어에서도 방어적으로 검증하여 내부 호출 시 안전성을 보장한다.</p>
+     *
+     * @param userId 사용자 ID
+     * @throws BusinessException userId가 null 또는 공백인 경우
+     */
+    private void validateUserId(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "userId는 필수입니다");
+        }
+    }
 
     // ──────────────────────────────────────────────
     // 잔액 확인 (Agent 내부 호출, 락 없음)
@@ -119,6 +126,7 @@ public class PointService {
      * @return 잔액 + 쿼터 통합 확인 결과
      */
     public CheckResponse checkPoint(String userId, int cost) {
+        validateUserId(userId);
         log.debug("포인트 잔액 + 쿼터 확인: userId={}, cost={}", userId, cost);
 
         // 1. UserPoint 조회 (없으면 잔액 0, BRONZE 등급으로 처리)
@@ -129,12 +137,12 @@ public class PointService {
         if (userPointOpt.isPresent()) {
             UserPoint userPoint = userPointOpt.get();
             balance = userPoint.getPointHave();
-            grade = userPoint.getUserGrade() != null ? userPoint.getUserGrade() : "BRONZE";
+            grade = userPoint.getUserGrade() != null ? userPoint.getUserGrade().name() : UserGrade.BRONZE.name();
         } else {
             // 포인트 레코드 미존재: 잔액 0, BRONZE 등급
             log.warn("포인트 레코드 없음: userId={}", userId);
             balance = 0;
-            grade = "BRONZE";
+            grade = UserGrade.BRONZE.name();
 
             // cost > 0이면 무조건 사용 불가 (레코드 없으므로 쿼터 검사도 의미 없음)
             if (cost > 0) {
@@ -257,6 +265,7 @@ public class PointService {
      */
     @Transactional
     public DeductResponse deductPoint(String userId, int amount, String sessionId, String description) {
+        validateUserId(userId);
         log.info("포인트 차감 시작: userId={}, amount={}, sessionId={}", userId, amount, sessionId);
 
         // 1. 비관적 락으로 포인트 레코드 조회 (SELECT FOR UPDATE)
@@ -309,17 +318,18 @@ public class PointService {
      * @return 잔액 정보 (balance, grade, totalEarned)
      */
     public BalanceResponse getBalance(String userId) {
+        validateUserId(userId);
         log.debug("잔액 조회: userId={}", userId);
 
         return userPointRepository.findByUserId(userId)
                 .map(userPoint -> new BalanceResponse(
                         userPoint.getPointHave(),
-                        userPoint.getUserGrade(),
+                        userPoint.getUserGrade() != null ? userPoint.getUserGrade().name() : UserGrade.BRONZE.name(),
                         userPoint.getTotalEarned()
                 ))
                 .orElseGet(() -> {
                     log.debug("포인트 레코드 없음 (기본값 반환): userId={}", userId);
-                    return new BalanceResponse(0, "BRONZE", 0);
+                    return new BalanceResponse(0, UserGrade.BRONZE.name(), 0);
                 });
     }
 
@@ -338,6 +348,7 @@ public class PointService {
      */
     @Transactional
     public void initializePoint(String userId, int freePoints) {
+        validateUserId(userId);
         log.info("포인트 초기화: userId={}, freePoints={}", userId, freePoints);
 
         // 이미 존재하면 건너뛰기 (멱등성)
@@ -353,7 +364,7 @@ public class PointService {
                 .totalEarned(freePoints)
                 .dailyEarned(0)
                 .dailyReset(LocalDate.now())
-                .userGrade("BRONZE")
+                .userGrade(UserGrade.BRONZE)
                 .build();
         userPointRepository.save(userPoint);
 
@@ -401,6 +412,7 @@ public class PointService {
     @Transactional
     public EarnResponse earnPoint(String userId, int amount, String pointType,
                                   String description, String referenceId) {
+        validateUserId(userId);
         log.info("포인트 획득 시작: userId={}, amount={}, type={}", userId, amount, pointType);
 
         // 1. 비관적 락으로 포인트 레코드 조회
@@ -414,10 +426,10 @@ public class PointService {
         userPoint.addPoints(amount, LocalDate.now());
         int newBalance = userPoint.getPointHave();
 
-        // 3. 등급 재계산 (누적 포인트 기반)
-        String newGrade = calculateGrade(userPoint.getTotalEarned());
-        String oldGrade = userPoint.getUserGrade();
-        if (!newGrade.equals(oldGrade)) {
+        // 3. 등급 재계산 (누적 포인트 기반, UserGrade enum 사용)
+        UserGrade newGrade = UserGrade.fromTotalEarned(userPoint.getTotalEarned());
+        UserGrade oldGrade = userPoint.getUserGrade();
+        if (newGrade != oldGrade) {
             userPoint.updateGrade(newGrade);
             log.info("등급 변경: userId={}, {} → {}", userId, oldGrade, newGrade);
         }
@@ -437,7 +449,7 @@ public class PointService {
                 userId, amount, newBalance, newGrade);
 
         // 5. 응답 반환
-        return new EarnResponse(newBalance, newGrade);
+        return new EarnResponse(newBalance, newGrade.name());
     }
 
     // ──────────────────────────────────────────────
@@ -455,6 +467,7 @@ public class PointService {
      * @return 포인트 변동 이력 페이지
      */
     public Page<HistoryResponse> getHistory(String userId, Pageable pageable) {
+        validateUserId(userId);
         log.debug("포인트 이력 조회: userId={}, page={}, size={}",
                 userId, pageable.getPageNumber(), pageable.getPageSize());
 
@@ -467,28 +480,8 @@ public class PointService {
     // private 헬퍼 메서드
     // ──────────────────────────────────────────────
 
+    // calculateGrade()는 UserGrade.fromTotalEarned()로 이전됨 (global/constants/UserGrade.java)
     // calculateMaxInputLength()는 Phase R-3에서 QuotaService.getMaxInputLength()로 이전됨
-
-    /**
-     * 누적 포인트 기반으로 등급을 계산한다.
-     *
-     * <p>등급은 누적 획득 포인트(totalEarned)에 의해 결정되며,
-     * 포인트를 사용해도 등급이 하락하지 않는다.</p>
-     *
-     * @param totalEarned 누적 획득 포인트
-     * @return 등급 문자열 (BRONZE, SILVER, GOLD, PLATINUM)
-     */
-    private String calculateGrade(int totalEarned) {
-        if (totalEarned >= PLATINUM_THRESHOLD) {
-            return "PLATINUM";
-        } else if (totalEarned >= GOLD_THRESHOLD) {
-            return "GOLD";
-        } else if (totalEarned >= SILVER_THRESHOLD) {
-            return "SILVER";
-        } else {
-            return "BRONZE";
-        }
-    }
 
     /**
      * PointsHistory 엔티티를 HistoryResponse DTO로 변환한다.

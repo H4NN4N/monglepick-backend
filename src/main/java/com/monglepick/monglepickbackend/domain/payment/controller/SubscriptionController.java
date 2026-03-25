@@ -3,8 +3,7 @@ package com.monglepick.monglepickbackend.domain.payment.controller;
 import com.monglepick.monglepickbackend.domain.payment.dto.PaymentDto.SubscriptionPlanResponse;
 import com.monglepick.monglepickbackend.domain.payment.dto.PaymentDto.SubscriptionStatusResponse;
 import com.monglepick.monglepickbackend.domain.payment.service.SubscriptionService;
-import com.monglepick.monglepickbackend.global.exception.BusinessException;
-import com.monglepick.monglepickbackend.global.exception.ErrorCode;
+import com.monglepick.monglepickbackend.global.controller.BaseController;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -34,7 +33,7 @@ import java.util.Map;
 @RequestMapping("/api/v1/subscription")
 @Slf4j
 @RequiredArgsConstructor
-public class SubscriptionController {
+public class SubscriptionController extends BaseController {
 
     /** 구독 서비스 */
     private final SubscriptionService subscriptionService;
@@ -117,20 +116,4 @@ public class SubscriptionController {
         ));
     }
 
-    // ──────────────────────────────────────────────
-    // private 헬퍼
-    // ──────────────────────────────────────────────
-
-    /**
-     * Principal에서 userId를 안전하게 추출한다.
-     * null인 경우 UNAUTHORIZED 예외를 던진다 (NPE 방지).
-     *
-     * <p>C-6 버그 수정: principal 직접 접근 시 NPE 발생 가능성 제거</p>
-     */
-    private String resolveUserId(Principal principal) {
-        if (principal == null || principal.getName() == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
-        }
-        return principal.getName();
-    }
 }

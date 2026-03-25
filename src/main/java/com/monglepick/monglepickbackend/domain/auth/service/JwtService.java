@@ -66,7 +66,7 @@ public class JwtService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         /* 4. 새 토큰 쌍 생성 */
-        String newAccessToken = jwtTokenProvider.generateAccessToken(userId, user.getUserRole());
+        String newAccessToken = jwtTokenProvider.generateAccessToken(userId, user.getUserRole().name());
         String newRefreshToken = jwtTokenProvider.generateRefreshToken(userId);
 
         /* 5. 기존 토큰 삭제 + 새 토큰 저장 (토큰 로테이션) */
@@ -120,7 +120,7 @@ public class JwtService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         /* 4. 새 토큰 쌍 생성 */
-        String newAccessToken = jwtTokenProvider.generateAccessToken(userId, user.getUserRole());
+        String newAccessToken = jwtTokenProvider.generateAccessToken(userId, user.getUserRole().name());
         String newRefreshToken = jwtTokenProvider.generateRefreshToken(userId);
 
         /* 5. 기존 토큰 삭제 + 새 토큰 저장 (토큰 로테이션) */

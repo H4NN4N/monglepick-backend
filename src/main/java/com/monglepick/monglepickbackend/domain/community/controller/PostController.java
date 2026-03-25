@@ -3,6 +3,7 @@ package com.monglepick.monglepickbackend.domain.community.controller;
 import com.monglepick.monglepickbackend.domain.community.dto.PostCreateRequest;
 import com.monglepick.monglepickbackend.domain.community.dto.PostResponse;
 import com.monglepick.monglepickbackend.domain.community.service.PostService;
+import com.monglepick.monglepickbackend.global.constants.AppConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -58,7 +59,12 @@ public class PostController {
             @PageableDefault(size = 15, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
 
-        Page<PostResponse> posts = postService.getPosts(category, pageable);
+        /* 페이지 크기 상한 제한 (대량 조회 DoS 방지) */
+        int safeSize = Math.min(pageable.getPageSize(), AppConstants.MAX_PAGE_SIZE);
+        Pageable safePage = org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), safeSize, pageable.getSort());
+
+        Page<PostResponse> posts = postService.getPosts(category, safePage);
         return ResponseEntity.ok(posts);
     }
 

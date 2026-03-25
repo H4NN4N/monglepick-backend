@@ -1,5 +1,6 @@
 package com.monglepick.monglepickbackend.domain.user.entity;
 
+import com.monglepick.monglepickbackend.global.constants.UserRole;
 import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -61,8 +62,9 @@ public class User extends BaseAuditEntity {
     private String providerId;
 
     /** 사용자 역할 (기본값: USER) */
+    @Enumerated(EnumType.STRING)
     @Column(name = "user_role", length = 20)
-    private String userRole;
+    private UserRole userRole;
 
     /** 생년월일 (YYYYMMDD) */
     @Column(name = "user_birth", length = 20)
@@ -86,7 +88,7 @@ public class User extends BaseAuditEntity {
     @Builder
     public User(String userId, String email, String nickname, String passwordHash,
                 String profileImage, Provider provider, String providerId,
-                String userRole, String userBirth, Boolean optionTerm, Boolean requiredTerm) {
+                UserRole userRole, String userBirth, Boolean optionTerm, Boolean requiredTerm) {
         this.userId = userId;
         this.email = email;
         this.nickname = nickname;
@@ -94,7 +96,7 @@ public class User extends BaseAuditEntity {
         this.profileImage = profileImage;
         this.provider = provider != null ? provider : Provider.LOCAL;
         this.providerId = providerId;
-        this.userRole = userRole != null ? userRole : "USER";
+        this.userRole = userRole != null ? userRole : UserRole.USER;
         this.userBirth = userBirth;
         this.optionTerm = optionTerm != null ? optionTerm : false;
         this.requiredTerm = requiredTerm != null ? requiredTerm : false;

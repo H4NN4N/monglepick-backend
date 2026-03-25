@@ -7,6 +7,7 @@ import com.monglepick.monglepickbackend.domain.auth.handler.RefreshTokenLogoutHa
 import com.monglepick.monglepickbackend.domain.auth.handler.SocialFailureHandler;
 import com.monglepick.monglepickbackend.domain.auth.handler.SocialSuccessHandler;
 import com.monglepick.monglepickbackend.domain.auth.service.JwtService;
+import com.monglepick.monglepickbackend.global.constants.AppConstants;
 import com.monglepick.monglepickbackend.global.exception.ErrorResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -187,7 +188,7 @@ public class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                            response.setContentType("application/json;charset=UTF-8");
+                            response.setContentType(AppConstants.CONTENT_TYPE_JSON);
 
                             ErrorResponse errorResponse = new ErrorResponse(
                                     "S002",
@@ -198,7 +199,7 @@ public class SecurityConfig {
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-                            response.setContentType("application/json;charset=UTF-8");
+                            response.setContentType(AppConstants.CONTENT_TYPE_JSON);
 
                             ErrorResponse errorResponse = new ErrorResponse(
                                     "S002",

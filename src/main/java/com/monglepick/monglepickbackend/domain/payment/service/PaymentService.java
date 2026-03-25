@@ -12,6 +12,8 @@ import com.monglepick.monglepickbackend.domain.payment.repository.PaymentOrderRe
 import com.monglepick.monglepickbackend.domain.payment.repository.SubscriptionPlanRepository;
 import com.monglepick.monglepickbackend.domain.reward.dto.PointDto;
 import com.monglepick.monglepickbackend.domain.reward.service.PointService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -155,7 +157,7 @@ public class PaymentService {
                 .idempotencyKey(idempotencyKey != null && !idempotencyKey.isBlank() ? idempotencyKey : null)
                 .status(PaymentOrder.OrderStatus.PENDING);
 
-        // 4. 구독인 경우 plan 조회 및 연결
+        // 4. 구독인 경우 plan 조회 + 금액 검증 + 연결
         if (orderType == PaymentOrder.OrderType.SUBSCRIPTION && request.planCode() != null) {
             SubscriptionPlan plan = planRepository.findByPlanCode(request.planCode())
                     .orElseThrow(() -> {
@@ -165,6 +167,16 @@ public class PaymentService {
                                 "구독 상품을 찾을 수 없습니다: " + request.planCode()
                         );
                     });
+
+            // 금액 변조 방지: 요청 금액이 상품 가격과 일치하는지 검증
+            if (!plan.getPrice().equals(request.amount())) {
+                log.error("결제 금액 변조 감지: planCode={}, 상품가격={}, 요청금액={}",
+                        request.planCode(), plan.getPrice(), request.amount());
+                throw new BusinessException(
+                        ErrorCode.PAYMENT_FAILED,
+                        "결제 금액이 상품 가격과 일치하지 않습니다. 상품: " + plan.getPrice() + "원, 요청: " + request.amount() + "원"
+                );
+            }
 
             // plan FK 연결 + 지급 포인트를 상품 정보에서 가져옴
             builder.plan(plan).pointsAmount(plan.getPointsPerPeriod());
@@ -288,10 +300,16 @@ public class PaymentService {
                         earnResult != null ? earnResult.balanceAfter() : "N/A");
             }
 
-            // 구독 결제인 경우 UserSubscription 생성
+            // 구독 결제인 경우 UserSubscription 생성 (실패 시 주문 FAILED 처리)
             if (order.getOrderType() == PaymentOrder.OrderType.SUBSCRIPTION && order.getPlan() != null) {
-                subscriptionService.createSubscription(order.getUserId(), order.getPlan());
-                log.info("구독 활성화: userId={}, plan={}", order.getUserId(), order.getPlan().getPlanCode());
+                try {
+                    subscriptionService.createSubscription(order.getUserId(), order.getPlan());
+                    log.info("구독 활성화: userId={}, plan={}", order.getUserId(), order.getPlan().getPlanCode());
+                } catch (Exception subEx) {
+                    log.error("구독 생성 실패 — 결제는 완료됨, 수동 확인 필요: orderId={}, error={}",
+                            order.getPaymentOrderId(), subEx.getMessage(), subEx);
+                    throw subEx;
+                }
             }
 
             int newBalance = earnResult != null ? earnResult.balanceAfter() : 0;
@@ -355,12 +373,49 @@ public class PaymentService {
      * @param signature TossPayments-Signature 헤더 값
      * @throws BusinessException 서명 검증 실패 시 (INVALID_WEBHOOK_SIGNATURE)
      */
+    private static final ObjectMapper WEBHOOK_MAPPER = new ObjectMapper();
+
+    @Transactional
     public void verifyAndProcessWebhook(String rawBody, String signature) {
+        /* 1. 서명 검증 */
         if (!tossClient.verifyWebhookSignature(rawBody, signature)) {
             log.error("Toss 웹훅 서명 검증 실패");
             throw new BusinessException(ErrorCode.INVALID_WEBHOOK_SIGNATURE);
         }
-        log.info("Toss 웹훅 수신 (서명 검증 통과): body={}", rawBody);
+        log.info("Toss 웹훅 수신 (서명 검증 통과)");
+
+        /* 2. 이벤트 파싱 및 처리 */
+        try {
+            JsonNode root = WEBHOOK_MAPPER.readTree(rawBody);
+            String eventType = root.path("eventType").asText("");
+            JsonNode data = root.path("data");
+
+            switch (eventType) {
+                case "PAYMENT_STATUS_CHANGED" -> {
+                    String orderId = data.path("orderId").asText(null);
+                    String status = data.path("status").asText("");
+
+                    if (orderId == null) {
+                        log.warn("웹훅 orderId 누락: eventType={}", eventType);
+                        return;
+                    }
+
+                    /* 취소/환불 처리 */
+                    if ("CANCELED".equals(status) || "PARTIAL_CANCELED".equals(status)) {
+                        orderRepository.findByPaymentOrderId(orderId).ifPresent(order -> {
+                            if (order.getStatus() == PaymentOrder.OrderStatus.COMPLETED) {
+                                order.refund();
+                                log.info("웹훅 환불 처리 완료: orderId={}", orderId);
+                            }
+                        });
+                    }
+                }
+                default -> log.debug("미처리 웹훅 이벤트: eventType={}", eventType);
+            }
+        } catch (Exception e) {
+            /* 웹훅 파싱 실패 시에도 200 반환해야 Toss 재시도를 방지함 — 로그만 기록 */
+            log.error("웹훅 이벤트 처리 실패 (파싱 오류): error={}", e.getMessage(), e);
+        }
     }
 
     // ──────────────────────────────────────────────

@@ -134,15 +134,11 @@ public class QuotaService {
         LocalDateTime dayEnd = today.plusDays(1).atStartOfDay();
         LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
 
-        // 3. 오늘 AI 추천 사용 횟수 카운트
-        //    조건: point_type='spend' AND description LIKE '%AI 추천%' AND 오늘 범위
-        long dailyUsed = historyRepository.countByUserIdAndPointTypeAndDescriptionContaining(
-                userId, "spend", "AI 추천", dayStart, dayEnd);
-
-        // 4. 이번 달 AI 추천 사용 횟수 카운트
-        //    조건: point_type='spend' AND description LIKE '%AI 추천%' AND 이번 달 범위
-        long monthlyUsed = historyRepository.countByUserIdAndPointTypeAndDescriptionContaining(
-                userId, "spend", "AI 추천", monthStart, dayEnd);
+        // 3. 일일+월간 AI 추천 사용 횟수를 단일 쿼리로 집계 (DB 부하 절감)
+        Object[] counts = historyRepository.countDailyAndMonthlyUsage(
+                userId, "spend", "AI 추천", dayStart, monthStart, dayEnd);
+        long dailyUsed = counts[0] != null ? ((Number) counts[0]).longValue() : 0;
+        long monthlyUsed = counts[1] != null ? ((Number) counts[1]).longValue() : 0;
 
         log.debug("사용 횟수 조회: userId={}, dailyUsed={}, monthlyUsed={}, quota={}",
                 userId, dailyUsed, monthlyUsed, quota);

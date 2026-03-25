@@ -1,9 +1,12 @@
 package com.monglepick.monglepickbackend.domain.reward.entity;
 
 /* BaseAuditEntity: created_at, updated_at, created_by, updated_by 자동 관리 */
+import com.monglepick.monglepickbackend.global.constants.UserGrade;
 import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -103,13 +106,14 @@ public class UserPoint extends BaseAuditEntity {
     private LocalDate dailyReset;
 
     /**
-     * 사용자 등급 (최대 20자).
-     * 기본값: "BRONZE".
+     * 사용자 등급.
+     * 기본값: BRONZE.
      * 누적 포인트에 따라 BRONZE → SILVER → GOLD → PLATINUM 으로 승급.
      */
+    @Enumerated(EnumType.STRING)
     @Column(name = "user_grade", length = 20)
     @Builder.Default
-    private String userGrade = "BRONZE";
+    private UserGrade userGrade = UserGrade.BRONZE;
 
     // ──────────────────────────────────────────────
     // 도메인 메서드 (Lombok @Getter only, setter 대신 사용)
@@ -172,9 +176,9 @@ public class UserPoint extends BaseAuditEntity {
      * <p>사용자 등급을 새로운 값으로 변경한다.
      * 등급 계산 로직은 서비스 레이어에서 수행하며, 이 메서드는 단순히 값을 설정한다.</p>
      *
-     * @param newGrade 새 등급 (BRONZE, SILVER, GOLD, PLATINUM)
+     * @param newGrade 새 등급
      */
-    public void updateGrade(String newGrade) {
+    public void updateGrade(UserGrade newGrade) {
         this.userGrade = newGrade;
     }
 }

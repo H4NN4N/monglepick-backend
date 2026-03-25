@@ -2,6 +2,7 @@ package com.monglepick.monglepickbackend.domain.auth.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.monglepick.monglepickbackend.domain.auth.service.JwtService;
 import com.monglepick.monglepickbackend.global.security.JwtTokenProvider;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +28,9 @@ import java.io.InputStreamReader;
 @RequiredArgsConstructor
 public class RefreshTokenLogoutHandler implements LogoutHandler {
 
+    /** JSON 직렬화를 위한 ObjectMapper (스레드 안전, 클래스 로딩 시 1회 초기화) */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final JwtService jwtService;
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -41,8 +45,7 @@ public class RefreshTokenLogoutHandler implements LogoutHandler {
 
             if (!StringUtils.hasText(body)) return;
 
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode jsonNode = mapper.readTree(body);
+            JsonNode jsonNode = OBJECT_MAPPER.readTree(body);
             String refreshToken = jsonNode.has("refreshToken")
                     ? jsonNode.get("refreshToken").asText()
                     : null;

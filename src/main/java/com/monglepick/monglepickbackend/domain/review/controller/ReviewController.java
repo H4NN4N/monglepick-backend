@@ -3,6 +3,7 @@ package com.monglepick.monglepickbackend.domain.review.controller;
 import com.monglepick.monglepickbackend.domain.review.dto.ReviewCreateRequest;
 import com.monglepick.monglepickbackend.domain.review.dto.ReviewResponse;
 import com.monglepick.monglepickbackend.domain.review.service.ReviewService;
+import com.monglepick.monglepickbackend.global.constants.AppConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -18,6 +19,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,7 +56,11 @@ public class ReviewController {
     public ResponseEntity<Page<ReviewResponse>> getReviewsByMovie(
             @PathVariable String movieId,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        Page<ReviewResponse> reviews = reviewService.getReviewsByMovie(movieId, pageable);
+        /* 페이지 크기 상한 제한 (대량 조회 DoS 방지) */
+        int safeSize = Math.min(pageable.getPageSize(), AppConstants.MAX_PAGE_SIZE);
+        Pageable safePage = org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), safeSize, pageable.getSort());
+        Page<ReviewResponse> reviews = reviewService.getReviewsByMovie(movieId, safePage);
         return ResponseEntity.ok(reviews);
     }
 
@@ -83,5 +89,31 @@ public class ReviewController {
         log.info("리뷰 작성 요청 - userId: {}, movieId: {}", userId, movieId);
         ReviewResponse review = reviewService.createReview(movieId, request, userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(review);
+    }
+
+    /**
+     * 리뷰 삭제 API (작성자만)
+     *
+     * @param movieId  영화 ID
+     * @param reviewId 리뷰 ID
+     * @param userId   JWT에서 추출한 사용자 ID
+     * @return 204 No Content
+     */
+    @Operation(summary = "리뷰 삭제", description = "리뷰 삭제 (작성자 본인만 가능)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "리뷰 삭제 성공"),
+            @ApiResponse(responseCode = "403", description = "삭제 권한 없음"),
+            @ApiResponse(responseCode = "404", description = "리뷰 없음")
+    })
+    @SecurityRequirement(name = "BearerAuth")
+    @DeleteMapping("/{reviewId}")
+    public ResponseEntity<Void> deleteReview(
+            @PathVariable String movieId,
+            @PathVariable Long reviewId,
+            @AuthenticationPrincipal String userId) {
+
+        log.info("리뷰 삭제 요청 - userId: {}, movieId: {}, reviewId: {}", userId, movieId, reviewId);
+        reviewService.deleteReview(reviewId, userId);
+        return ResponseEntity.noContent().build();
     }
 }

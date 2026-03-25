@@ -70,4 +70,35 @@ public interface PointsHistoryRepository extends JpaRepository<PointsHistory, Lo
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end
     );
+
+    /**
+     * 일일/월간 AI 추천 사용 횟수를 단일 쿼리로 집계한다.
+     *
+     * <p>QuotaService에서 dailyUsed/monthlyUsed를 각각 COUNT하던 것을
+     * 하나의 쿼리로 통합하여 대용량 테이블(26M+)에서 DB 부하를 절반으로 줄인다.</p>
+     *
+     * @param userId     사용자 ID
+     * @param pointType  포인트 변동 유형 (예: "spend")
+     * @param keyword    설명에 포함되어야 하는 키워드 (예: "AI 추천")
+     * @param dayStart   오늘 시작 시각 (일일 카운트 기준)
+     * @param monthStart 이번 달 시작 시각 (월간 카운트 기준)
+     * @param end        종료 시각 (exclusive)
+     * @return [0]: 일일 사용 횟수, [1]: 월간 사용 횟수
+     */
+    @Query("SELECT " +
+            "SUM(CASE WHEN h.createdAt >= :dayStart THEN 1 ELSE 0 END), " +
+            "SUM(CASE WHEN h.createdAt >= :monthStart THEN 1 ELSE 0 END) " +
+            "FROM PointsHistory h " +
+            "WHERE h.userId = :userId " +
+            "AND h.pointType = :pointType " +
+            "AND h.description LIKE %:keyword% " +
+            "AND h.createdAt >= :monthStart AND h.createdAt < :end")
+    Object[] countDailyAndMonthlyUsage(
+            @Param("userId") String userId,
+            @Param("pointType") String pointType,
+            @Param("keyword") String keyword,
+            @Param("dayStart") LocalDateTime dayStart,
+            @Param("monthStart") LocalDateTime monthStart,
+            @Param("end") LocalDateTime end
+    );
 }

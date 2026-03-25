@@ -10,6 +10,8 @@ import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,6 +83,7 @@ public class SubscriptionService {
      *
      * @return 활성 구독 상품 목록 (가격 오름차순)
      */
+    @Cacheable(value = "subscriptionPlans")
     public List<SubscriptionPlanResponse> getActivePlans() {
         log.debug("활성 구독 상품 목록 조회");
 

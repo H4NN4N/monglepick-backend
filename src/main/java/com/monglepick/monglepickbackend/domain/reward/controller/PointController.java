@@ -15,9 +15,7 @@ import com.monglepick.monglepickbackend.domain.reward.dto.PointDto.PointItemResp
 import com.monglepick.monglepickbackend.domain.reward.service.AttendanceService;
 import com.monglepick.monglepickbackend.domain.reward.service.PointItemService;
 import com.monglepick.monglepickbackend.domain.reward.service.PointService;
-import com.monglepick.monglepickbackend.global.exception.BusinessException;
-import com.monglepick.monglepickbackend.global.exception.ErrorCode;
-import com.monglepick.monglepickbackend.global.security.ServiceKeyAuthFilter;
+import com.monglepick.monglepickbackend.global.controller.BaseController;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -57,7 +55,7 @@ import java.util.List;
 @RequestMapping("/api/v1/point")
 @Slf4j
 @RequiredArgsConstructor
-public class PointController {
+public class PointController extends BaseController {
 
     /** 포인트 서비스 (잔액 확인/차감/획득/이력 비즈니스 로직) */
     private final PointService pointService;
@@ -67,35 +65,6 @@ public class PointController {
 
     /** 포인트 아이템 서비스 (아이템 조회/교환) */
     private final PointItemService pointItemService;
-
-    /**
-     * 인증 정보에서 userId를 추출한다.
-     *
-     * <p>JWT 인증: principal.getName() = userId (JwtAuthenticationFilter가 설정)
-     * ServiceKey 인증: principal.getName() = "service" → requestUserId 파라미터 사용</p>
-     *
-     * @param principal     인증된 사용자 정보
-     * @param requestUserId 요청에 포함된 userId (Agent 호출 시 사용, nullable)
-     * @return 확인된 사용자 ID
-     * @throws BusinessException 인증 정보가 없거나, ServiceKey 호출인데 userId가 누락된 경우
-     */
-    private String resolveUserId(Principal principal, String requestUserId) {
-        if (principal == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
-        }
-        String principalName = principal.getName();
-
-        // ServiceKey 인증: Agent가 요청 파라미터로 userId를 전달
-        if (ServiceKeyAuthFilter.SERVICE_PRINCIPAL.equals(principalName)) {
-            if (requestUserId == null || requestUserId.isBlank()) {
-                throw new BusinessException(ErrorCode.INVALID_INPUT, "서비스 호출 시 userId는 필수입니다");
-            }
-            return requestUserId;
-        }
-
-        // JWT 인증: 토큰에서 추출한 userId 사용
-        return principalName;
-    }
 
     // ──────────────────────────────────────────────
     // Agent 내부 호출 엔드포인트
@@ -120,7 +89,7 @@ public class PointController {
             Principal principal,
             @Valid @RequestBody CheckRequest request) {
         // ServiceKey(Agent) → request.userId() 사용, JWT → principal에서 추출 (BOLA 방지)
-        String userId = resolveUserId(principal, request.userId());
+        String userId = resolveUserIdWithServiceKey(principal, request.userId());
         log.debug("POST /api/v1/point/check — userId={}, cost={}", userId, request.cost());
 
         CheckResponse response = pointService.checkPoint(userId, request.cost());
@@ -146,7 +115,7 @@ public class PointController {
             Principal principal,
             @Valid @RequestBody DeductRequest request) {
         // ServiceKey(Agent) → request.userId() 사용, JWT → principal에서 추출 (BOLA 방지)
-        String userId = resolveUserId(principal, request.userId());
+        String userId = resolveUserIdWithServiceKey(principal, request.userId());
         log.info("POST /api/v1/point/deduct — userId={}, amount={}, sessionId={}",
                 userId, request.amount(), request.sessionId());
 
@@ -179,7 +148,7 @@ public class PointController {
             Principal principal,
             @Valid @RequestBody EarnRequest request) {
         // ServiceKey(Agent) → request.userId() 사용, JWT → principal에서 추출 (BOLA 방지)
-        String userId = resolveUserId(principal, request.userId());
+        String userId = resolveUserIdWithServiceKey(principal, request.userId());
         log.info("POST /api/v1/point/earn — userId={}, amount={}, type={}",
                 userId, request.amount(), request.pointType());
 
@@ -212,7 +181,7 @@ public class PointController {
     public ResponseEntity<BalanceResponse> getBalance(
             Principal principal,
             @RequestParam(required = false) String userId) {
-        String resolvedUserId = resolveUserId(principal, userId);
+        String resolvedUserId = resolveUserIdWithServiceKey(principal, userId);
         log.debug("GET /api/v1/point/balance — userId={}", resolvedUserId);
 
         BalanceResponse response = pointService.getBalance(resolvedUserId);
@@ -240,9 +209,9 @@ public class PointController {
             Principal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        String userId = resolveUserId(principal, null);
-        // 페이지 크기 상한 100으로 제한 (대량 조회 방지)
-        int safeSize = Math.min(size, 100);
+        String userId = resolveUserIdWithServiceKey(principal, null);
+        // 페이지 크기 상한 제한 (대량 조회 방지)
+        int safeSize = limitPageSize(size);
         log.debug("GET /api/v1/point/history — userId={}, page={}, size={}", userId, page, safeSize);
 
         Page<HistoryResponse> response = pointService.getHistory(userId, PageRequest.of(page, safeSize));
@@ -269,7 +238,7 @@ public class PointController {
     @SecurityRequirement(name = "BearerAuth")
     @PostMapping("/attendance")
     public ResponseEntity<AttendanceResponse> checkIn(Principal principal) {
-        String userId = resolveUserId(principal, null);
+        String userId = resolveUserIdWithServiceKey(principal, null);
         log.info("POST /api/v1/point/attendance — userId={}", userId);
 
         AttendanceResponse response = attendanceService.checkIn(userId);
@@ -289,7 +258,7 @@ public class PointController {
     @SecurityRequirement(name = "BearerAuth")
     @GetMapping("/attendance/status")
     public ResponseEntity<AttendanceStatusResponse> getAttendanceStatus(Principal principal) {
-        String userId = resolveUserId(principal, null);
+        String userId = resolveUserIdWithServiceKey(principal, null);
         log.debug("GET /api/v1/point/attendance/status — userId={}", userId);
 
         AttendanceStatusResponse response = attendanceService.getStatus(userId);
@@ -341,7 +310,7 @@ public class PointController {
     public ResponseEntity<ExchangeResponse> exchangeItem(
             Principal principal,
             @PathVariable Long itemId) {
-        String userId = resolveUserId(principal, null);
+        String userId = resolveUserIdWithServiceKey(principal, null);
         log.info("POST /api/v1/point/items/{}/exchange — userId={}", itemId, userId);
 
         ExchangeResponse response = pointItemService.exchangeItem(userId, itemId);

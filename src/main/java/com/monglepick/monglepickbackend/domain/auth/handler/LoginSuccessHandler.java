@@ -73,7 +73,7 @@ public class LoginSuccessHandler implements AuthenticationSuccessHandler {
                 .orElseThrow(() -> new RuntimeException("로그인 성공 후 사용자 조회 실패: " + email));
 
         /* Access Token + Refresh Token 생성 */
-        String accessToken = jwtTokenProvider.generateAccessToken(user.getUserId(), user.getUserRole());
+        String accessToken = jwtTokenProvider.generateAccessToken(user.getUserId(), user.getUserRole().name());
         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getUserId());
 
         /* Refresh Token을 DB 화이트리스트에 저장 */
@@ -89,7 +89,7 @@ public class LoginSuccessHandler implements AuthenticationSuccessHandler {
                         user.getNickname(),
                         user.getProfileImage(),
                         user.getProvider().name(),
-                        user.getUserRole()
+                        user.getUserRole().name()
                 )
         );
 
