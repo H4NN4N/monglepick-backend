@@ -1,6 +1,5 @@
 package com.monglepick.monglepickbackend.domain.auth.service;
 
-import com.monglepick.monglepickbackend.domain.auth.dto.JwtResponseDto;
 import com.monglepick.monglepickbackend.domain.auth.entity.RefreshEntity;
 import com.monglepick.monglepickbackend.domain.auth.repository.RefreshRepository;
 import com.monglepick.monglepickbackend.domain.user.entity.User;
@@ -8,9 +7,6 @@ import com.monglepick.monglepickbackend.domain.user.repository.UserRepository;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import com.monglepick.monglepickbackend.global.security.JwtTokenProvider;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,10 +16,15 @@ import org.springframework.transaction.annotation.Transactional;
  * JWT 토큰 라이프사이클 관리 서비스.
  *
  * <p>KMG 프로젝트의 JWTService 패턴을 적용하여
- * Refresh Token Rotation, 쿠키→헤더 교환, 화이트리스트 관리를 처리한다.</p>
+ * Refresh Token Rotation과 화이트리스트 관리를 처리한다.</p>
  *
  * <p>C-4 수정: RuntimeException → BusinessException으로 교체하여
  * GlobalExceptionHandler가 적절한 HTTP 상태 코드와 에러 응답을 반환하도록 함.</p>
+ *
+ * <p>쿠키 보안 수정: cookie2Header() 메서드 삭제.
+ * 쿠키 읽기/쓰기 로직을 서비스 레이어에서 제거하고 JwtController에서 CookieUtil로 처리한다.
+ * refreshRotate() 반환타입을 JwtResponseDto → JwtRefreshResult로 교체하여
+ * refreshToken이 서비스 바깥으로 전달되지 않도록 명시적으로 분리한다.</p>
  */
 @Slf4j
 @Service
@@ -36,19 +37,33 @@ public class JwtService {
     private final UserRepository userRepository;
 
     /**
+     * Refresh Token 로테이션 결과를 담는 불변 record.
+     *
+     * <p>JwtController가 이 결과를 받아
+     * newAccessToken은 JSON body로, newRefreshToken은 CookieUtil을 통해 쿠키로 전달한다.
+     * 이 record는 JwtService 내부에서만 생성되며, HTTP 응답 body에 직접 직렬화되지 않는다.</p>
+     *
+     * @param newAccessToken  새로 발급된 Access Token
+     * @param newRefreshToken 새로 발급된 Refresh Token (쿠키 전달용)
+     */
+    public record JwtRefreshResult(String newAccessToken, String newRefreshToken) {
+    }
+
+    /**
      * Refresh Token을 갱신한다 (Rotation 패턴).
      *
      * <p>기존 Refresh Token을 DB 화이트리스트에서 삭제하고,
-     * 새로운 Access Token + Refresh Token 쌍을 발급한다.</p>
+     * 새로운 Access Token + Refresh Token 쌍을 발급한다.
+     * 호출자(JwtController)가 newRefreshToken을 쿠키로, newAccessToken을 body로 각각 전달한다.</p>
      *
      * <p>C-4 수정: RuntimeException → BusinessException (REFRESH_TOKEN_NOT_FOUND, USER_NOT_FOUND)</p>
      *
-     * @param refreshToken 기존 Refresh Token
-     * @return 새로운 토큰 쌍 + 사용자 닉네임
+     * @param refreshToken 기존 Refresh Token (쿠키에서 추출)
+     * @return 새로운 토큰 쌍 (JwtRefreshResult)
      * @throws BusinessException 유효하지 않은 토큰 또는 화이트리스트에 없는 토큰
      */
     @Transactional
-    public JwtResponseDto refreshRotate(String refreshToken) {
+    public JwtRefreshResult refreshRotate(String refreshToken) {
         /* 1. 토큰 서명 및 만료 검증 */
         JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parse(refreshToken);
         if (parsed == null || !parsed.isRefresh()) {
@@ -75,70 +90,8 @@ public class JwtService {
 
         log.info("Refresh Token 갱신 완료 — userId: {}", userId);
 
-        return new JwtResponseDto(newAccessToken, newRefreshToken, user.getNickname());
-    }
-
-    /**
-     * OAuth2 소셜 로그인 후 쿠키의 Refresh Token을 헤더 기반 JWT로 교환한다.
-     *
-     * <p>C-4 수정: RuntimeException → BusinessException (COOKIE_NOT_FOUND, REFRESH_TOKEN_NOT_FOUND, USER_NOT_FOUND)</p>
-     *
-     * @param request  HTTP 요청 (쿠키 포함)
-     * @param response HTTP 응답 (쿠키 삭제용)
-     * @return 새로운 토큰 쌍 + 사용자 닉네임
-     * @throws BusinessException 쿠키가 없거나 유효하지 않은 토큰
-     */
-    @Transactional
-    public JwtResponseDto cookie2Header(HttpServletRequest request, HttpServletResponse response) {
-        /* 1. 쿠키에서 Refresh Token 추출 */
-        Cookie[] cookies = request.getCookies();
-        if (cookies == null) {
-            throw new BusinessException(ErrorCode.COOKIE_NOT_FOUND);
-        }
-
-        String refreshToken = null;
-        for (Cookie cookie : cookies) {
-            if ("refreshToken".equals(cookie.getName())) {
-                refreshToken = cookie.getValue();
-                break;
-            }
-        }
-
-        if (refreshToken == null) {
-            throw new BusinessException(ErrorCode.COOKIE_NOT_FOUND, "refreshToken 쿠키가 없습니다.");
-        }
-
-        /* 2. Refresh Token 검증 */
-        JwtTokenProvider.ParsedToken parsed = jwtTokenProvider.parse(refreshToken);
-        if (parsed == null || !parsed.isRefresh()) {
-            throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_FOUND);
-        }
-
-        /* 3. userId 추출 및 사용자 조회 */
-        String userId = parsed.userId();
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-
-        /* 4. 새 토큰 쌍 생성 */
-        String newAccessToken = jwtTokenProvider.generateAccessToken(userId, user.getUserRole().name());
-        String newRefreshToken = jwtTokenProvider.generateRefreshToken(userId);
-
-        /* 5. 기존 토큰 삭제 + 새 토큰 저장 (토큰 로테이션) */
-        removeRefresh(refreshToken);
-        refreshRepository.flush();
-        addRefresh(userId, newRefreshToken);
-
-        /* 6. 기존 쿠키 삭제 */
-        Cookie refreshCookie = new Cookie("refreshToken", null);
-        refreshCookie.setHttpOnly(true);
-        refreshCookie.setSecure(false);
-        refreshCookie.setPath("/");
-        refreshCookie.setMaxAge(0);
-        response.addCookie(refreshCookie);
-
-        log.info("OAuth2 쿠키→헤더 교환 완료 — userId: {}", userId);
-
-        return new JwtResponseDto(newAccessToken, newRefreshToken, user.getNickname());
+        /* newAccessToken: body 반환용, newRefreshToken: 쿠키 설정용 (Controller에서 분리 처리) */
+        return new JwtRefreshResult(newAccessToken, newRefreshToken);
     }
 
     /**

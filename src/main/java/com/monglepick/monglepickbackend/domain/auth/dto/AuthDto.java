@@ -20,7 +20,8 @@ import jakarta.validation.constraints.Size;
  * <h3>남은 DTO</h3>
  * <ul>
  *   <li>{@link SignupRequest} — 로컬 회원가입 요청 (이메일, 비밀번호, 닉네임)</li>
- *   <li>{@link AuthResponse} — 회원가입 성공 응답 (토큰 쌍 + 사용자 정보)</li>
+ *   <li>{@link AuthResponse} — 회원가입 내부 처리용 (refreshToken 포함, 서비스 레이어 전용)</li>
+ *   <li>{@link AuthResponseBody} — 회원가입 HTTP 응답 body용 (refreshToken 제외, XSS 방어)</li>
  *   <li>{@link UserInfo} — 사용자 요약 정보</li>
  * </ul>
  */
@@ -60,19 +61,43 @@ public final class AuthDto {
     }
 
     /**
-     * 인증 성공 응답 (회원가입 시 사용).
+     * 인증 성공 응답 — 서비스 레이어 내부 전달용.
+     *
+     * <p>AuthService.signup()에서 생성되며, refreshToken 필드를 포함한다.
+     * 이 DTO는 HTTP 응답 body로 직접 반환하지 않고,
+     * AuthController에서 쿠키 설정 후 {@link AuthResponseBody}로 변환하여 반환한다.</p>
      *
      * @param accessToken  JWT Access Token
-     * @param refreshToken JWT Refresh Token
+     * @param refreshToken JWT Refresh Token (서비스 레이어 내부 전달용 — body 노출 금지)
      * @param user         사용자 요약 정보
      */
-    @Schema(description = "인증 성공 응답 (JWT 토큰 쌍 + 사용자 정보)")
+    @Schema(description = "인증 성공 응답 (서비스 레이어 내부 전달용 — refreshToken 포함)")
     public record AuthResponse(
             @Schema(description = "JWT Access Token", example = "eyJhbGciOiJIUzI1NiJ9...")
             String accessToken,
 
-            @Schema(description = "JWT Refresh Token", example = "eyJhbGciOiJIUzI1NiJ9...")
+            @Schema(description = "JWT Refresh Token (HTTP 응답 body에 노출 금지, 쿠키로만 전달)",
+                    example = "eyJhbGciOiJIUzI1NiJ9...")
             String refreshToken,
+
+            @Schema(description = "사용자 요약 정보")
+            UserInfo user
+    ) {
+    }
+
+    /**
+     * 회원가입 HTTP 응답 body용 DTO.
+     *
+     * <p>Refresh Token을 HttpOnly 쿠키로 전달한 후 HTTP 응답 body에는
+     * Access Token과 사용자 정보만 포함한다 (XSS 방어).</p>
+     *
+     * @param accessToken JWT Access Token
+     * @param user        사용자 요약 정보
+     */
+    @Schema(description = "회원가입 HTTP 응답 body (accessToken + user, refreshToken은 쿠키로 전달)")
+    public record AuthResponseBody(
+            @Schema(description = "JWT Access Token", example = "eyJhbGciOiJIUzI1NiJ9...")
+            String accessToken,
 
             @Schema(description = "사용자 요약 정보")
             UserInfo user

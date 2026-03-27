@@ -1,13 +1,16 @@
 package com.monglepick.monglepickbackend.domain.auth.controller;
 
 import com.monglepick.monglepickbackend.domain.auth.dto.AuthDto.AuthResponse;
+import com.monglepick.monglepickbackend.domain.auth.dto.AuthDto.AuthResponseBody;
 import com.monglepick.monglepickbackend.domain.auth.dto.AuthDto.SignupRequest;
 import com.monglepick.monglepickbackend.domain.auth.service.AuthService;
+import com.monglepick.monglepickbackend.global.security.CookieUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +36,10 @@ import org.springframework.web.bind.annotation.RestController;
  *       → AuthController에서 제거됨</li>
  * </ul>
  *
+ * <h3>쿠키 보안 정책</h3>
+ * <p>회원가입 성공 시 Refresh Token은 HttpOnly 쿠키로만 전달하고,
+ * HTTP 응답 body에는 Access Token과 사용자 정보만 포함한다 (XSS 방어).</p>
+ *
  * <h3>남은 엔드포인트</h3>
  * <ul>
  *   <li>POST /api/v1/auth/signup — 로컬 회원가입</li>
@@ -48,27 +55,54 @@ public class AuthController {
     private final AuthService authService;
 
     /**
+     * Refresh Token 쿠키 설정/삭제/추출을 담당하는 단일 유틸리티.
+     * 모든 인증 흐름에서 쿠키 처리를 일관되게 관리한다.
+     */
+    private final CookieUtil cookieUtil;
+
+    /**
      * 로컬 회원가입.
      *
-     * <p>이메일+비밀번호+닉네임으로 회원가입 후 JWT를 즉시 발급한다.</p>
+     * <p>이메일+비밀번호+닉네임으로 회원가입 후 JWT를 즉시 발급한다.
+     * Refresh Token은 HttpOnly 쿠키로 전달하고,
+     * 응답 body에는 Access Token과 사용자 정보만 포함한다.</p>
      *
-     * @param request 회원가입 요청
-     * @return 201 Created + AuthResponse (토큰 쌍 + 사용자 정보)
+     * @param request  회원가입 요청 (email, password, nickname)
+     * @param response HTTP 응답 객체 (Refresh Token 쿠키 설정에 사용)
+     * @return 201 Created + AuthResponseBody (accessToken + user, refreshToken은 쿠키)
      */
     @Operation(
             summary = "로컬 회원가입",
-            description = "이메일/비밀번호/닉네임으로 계정 생성, JWT 토큰 반환"
+            description = "이메일/비밀번호/닉네임으로 계정 생성. accessToken은 body, refreshToken은 HttpOnly 쿠키로 반환"
     )
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "회원가입 성공"),
-            @ApiResponse(responseCode = "409", description = "이미 사용 중인 이메일")
+            @ApiResponse(responseCode = "409", description = "이미 사용 중인 이메일 또는 닉네임")
     })
     @SecurityRequirement(name = "")
     @PostMapping("/signup")
-    public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
+    public ResponseEntity<AuthResponseBody> signup(
+            @Valid @RequestBody SignupRequest request,
+            HttpServletResponse response
+    ) {
         log.info("POST /api/v1/auth/signup — email: {}", request.email());
 
-        AuthResponse response = authService.signup(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        /* 서비스에서 토큰 쌍 + 사용자 정보 생성 (refreshToken 포함) */
+        AuthResponse authResponse = authService.signup(request);
+
+        /*
+         * Refresh Token을 HttpOnly 쿠키로 설정.
+         * body에는 포함하지 않아 XSS 공격으로부터 Refresh Token을 보호한다.
+         * Set-Cookie 헤더는 ResponseEntity.body() 반환 이전에 추가해야 정상 동작한다.
+         */
+        cookieUtil.addRefreshTokenCookie(response, authResponse.refreshToken());
+
+        /* HTTP 응답 body: accessToken + user 정보만 반환 (refreshToken 제외) */
+        AuthResponseBody responseBody = new AuthResponseBody(
+                authResponse.accessToken(),
+                authResponse.user()
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(responseBody);
     }
 }
