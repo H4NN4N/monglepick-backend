@@ -110,6 +110,18 @@ public class JwtTokenProvider {
     }
 
     /**
+     * Refresh Token 만료 시간(밀리초)을 반환한다.
+     *
+     * <p>CookieUtil에서 쿠키의 MaxAge를 Refresh Token 만료 시간과 동기화할 때 사용한다.
+     * 반환값은 밀리초 단위이므로 쿠키 MaxAge(초 단위)로 사용할 때는 1000으로 나눠야 한다.</p>
+     *
+     * @return Refresh Token 만료 시간 (밀리초)
+     */
+    public long getRefreshTokenExpiry() {
+        return refreshTokenExpiry;
+    }
+
+    /**
      * JWT 토큰의 유효성을 검증한다.
      *
      * <p>서명 검증과 만료 시간 확인을 수행한다.

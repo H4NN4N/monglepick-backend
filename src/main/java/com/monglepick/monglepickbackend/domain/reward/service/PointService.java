@@ -16,6 +16,7 @@ import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import com.monglepick.monglepickbackend.global.exception.InsufficientPointException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -343,21 +344,38 @@ public class PointService {
      * <p>멱등(idempotent) 동작: 이미 포인트 레코드가 존재하면 아무 작업도 하지 않는다.
      * 신규 사용자에게 무료 포인트(freePoints)를 지급하고 "bonus" 이력을 기록한다.</p>
      *
+     * <h4>동시성 처리 전략 (2단계)</h4>
+     * <ol>
+     *   <li><b>1차 방어 (애플리케이션 레벨)</b>: {@code existsByUserId()}로 먼저 확인.
+     *       일반적인 순차 호출에서는 여기서 걸러지며 DB 불필요한 INSERT를 방지한다.</li>
+     *   <li><b>2차 방어 (DB 레벨)</b>: {@code user_id} 컬럼의 UNIQUE 제약이
+     *       동시에 INSERT가 발생하는 TOCTOU(검사-사용 시간차) 경쟁 조건에서 중복을 차단한다.
+     *       {@code DataIntegrityViolationException} 발생 시 기존 레코드를 조회하여 반환(멱등).</li>
+     * </ol>
+     *
+     * <h4>트랜잭션 전파 전략</h4>
+     * <p>{@code REQUIRES_NEW}를 사용하여 이 메서드를 <b>항상 독립 트랜잭션</b>으로 실행한다.
+     * 이유: {@code DataIntegrityViolationException}이 발생하면 Spring이 현재 트랜잭션을
+     * rollback-only로 마킹한다. 만약 상위 트랜잭션(예: 회원가입 흐름)에 참여 중이었다면
+     * 상위 트랜잭션 전체가 롤백되는 부작용이 발생한다.
+     * {@code REQUIRES_NEW}로 분리하면 UK 충돌을 이 메서드 안에서 완전히 처리할 수 있다.</p>
+     *
      * @param userId     사용자 ID
      * @param freePoints 가입 보너스 포인트 (0이면 레코드만 생성)
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void initializePoint(String userId, int freePoints) {
         validateUserId(userId);
         log.info("포인트 초기화: userId={}, freePoints={}", userId, freePoints);
 
-        // 이미 존재하면 건너뛰기 (멱등성)
+        // ── 1차 방어: existsByUserId() 조회로 애플리케이션 레벨에서 중복 생성 방지 ──
+        // 일반적인 순차 호출에서는 여기서 걸러짐 (DB 왕복 1회, INSERT 불필요)
         if (userPointRepository.existsByUserId(userId)) {
             log.debug("포인트 레코드 이미 존재 (초기화 건너뜀): userId={}", userId);
             return;
         }
 
-        // UserPoint 레코드 생성
+        // 신규 UserPoint 레코드 구성
         UserPoint userPoint = UserPoint.builder()
                 .userId(userId)
                 .pointHave(freePoints)
@@ -366,7 +384,27 @@ public class PointService {
                 .dailyReset(LocalDate.now())
                 .userGrade(UserGrade.BRONZE)
                 .build();
-        userPointRepository.save(userPoint);
+
+        try {
+            // ── 2차 방어: DB UNIQUE 제약 위반(DataIntegrityViolationException)으로 중복 감지 ──
+            // TOCTOU 경쟁 조건: existsByUserId() 통과 직후 다른 스레드가 INSERT를 완료하면
+            // DB의 user_id UNIQUE 제약이 이를 차단한다.
+            // REQUIRES_NEW 덕분에 이 트랜잭션만 롤백되고 상위 트랜잭션은 영향받지 않는다.
+            userPointRepository.save(userPoint);
+
+            // flush()를 명시적으로 호출하여 UK 위반을 save() 시점에 즉시 감지한다.
+            // flush 없이는 트랜잭션 커밋 시점까지 DB 왕복이 지연되어
+            // catch 블록 진입 전에 메서드가 종료될 수 있다.
+            userPointRepository.flush();
+
+        } catch (DataIntegrityViolationException e) {
+            // userId UK 제약 위반 → 다른 스레드/요청이 이미 레코드를 생성한 상태.
+            // 기존 레코드가 정상 생성된 것이므로 조용히 반환(멱등 동작).
+            // 이 예외는 REQUIRES_NEW 트랜잭션 안에서 처리되므로 상위 트랜잭션에 영향 없음.
+            log.info("포인트 초기화 중 중복 생성 감지 — 기존 레코드 정상 존재 (멱등 처리): userId={}, detail={}",
+                    userId, e.getMessage());
+            return;
+        }
 
         // 가입 보너스 이력 기록 (freePoints > 0인 경우만)
         if (freePoints > 0) {
@@ -378,6 +416,7 @@ public class PointService {
                     .description("회원가입 보너스")
                     .build();
             pointsHistoryRepository.save(history);
+            log.debug("가입 보너스 이력 기록: userId={}, freePoints={}", userId, freePoints);
         }
 
         log.info("포인트 초기화 완료: userId={}, 초기 포인트={}", userId, freePoints);

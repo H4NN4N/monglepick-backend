@@ -66,9 +66,17 @@ public class UserPoint extends BaseAuditEntity {
 
     /**
      * 사용자 ID (VARCHAR(50), NOT NULL, UNIQUE).
-     * users.user_id를 참조한다.
+     *
+     * <p>users.user_id를 참조한다. 사용자 1명당 포인트 레코드는 반드시 1개만 존재해야 한다.</p>
+     *
+     * <p>{@code unique = true}는 JPA가 DDL을 생성할 때 UK 제약을 컬럼 레벨에 추가한다.
+     * 클래스 레벨의 {@code @UniqueConstraint(columnNames = "user_id")}와 동일한 효과이나,
+     * 두 가지 방식을 함께 선언하여 JPA 레이어와 DB 레이어 모두에서 중복을 방지한다.
+     * 덕분에 동시 삽입 시 DB가 {@code DataIntegrityViolationException}을 발생시키며,
+     * {@link com.monglepick.monglepickbackend.domain.reward.service.PointService#initializePoint}
+     * 에서 이를 포착하여 멱등 동작을 보장한다.</p>
      */
-    @Column(name = "user_id", length = 50, nullable = false)
+    @Column(name = "user_id", length = 50, nullable = false, unique = true)
     private String userId;
 
     /**

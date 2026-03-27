@@ -1,0 +1,151 @@
+package com.monglepick.monglepickbackend.domain.support.entity;
+
+import com.monglepick.monglepickbackend.domain.user.entity.User;
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+/**
+ * 고객센터 상담 티켓 엔티티.
+ *
+ * <p>MySQL {@code support_tickets} 테이블과 매핑된다.
+ * 사용자가 FAQ/도움말로 해결하지 못한 문제를 직접 문의하는 1:1 상담 채널이다.</p>
+ *
+ * <h3>티켓 상태 전이</h3>
+ * <pre>
+ * OPEN → IN_PROGRESS → RESOLVED → CLOSED
+ *      ↘                         ↗
+ *        (관리자 직접 종결 가능)
+ * </pre>
+ *
+ * <h3>연관 관계</h3>
+ * <ul>
+ *   <li>user: ManyToOne LAZY — 티켓 목록/상세 조회 시 필요할 때만 JOIN</li>
+ * </ul>
+ */
+@Entity
+@Table(name = "support_tickets", indexes = {
+        // 사용자별 티켓 목록 조회 시 사용 (user_id + 페이징)
+        @Index(name = "idx_support_tickets_user", columnList = "user_id"),
+        // 상태별 관리자 조회 시 사용
+        @Index(name = "idx_support_tickets_status", columnList = "status"),
+        // 최신순 정렬 시 사용
+        @Index(name = "idx_support_tickets_created_at", columnList = "created_at")
+})
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class SupportTicket extends BaseAuditEntity {
+
+    /**
+     * 티켓 고유 식별자 (BIGINT AUTO_INCREMENT PK).
+     * DB가 자동 생성하며 변경 불가.
+     */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "ticket_id")
+    private Long ticketId;
+
+    /**
+     * 티켓 작성자.
+     * LAZY 로딩 — 티켓 목록 조회 시 불필요한 User JOIN을 방지한다.
+     * nullable = false: 반드시 로그인한 사용자만 티켓을 생성할 수 있다.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    /**
+     * 문의 카테고리.
+     * GENERAL, ACCOUNT, CHAT, RECOMMENDATION, COMMUNITY, PAYMENT 중 하나.
+     * EnumType.STRING으로 DB에 문자열로 저장된다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private SupportCategory category;
+
+    /**
+     * 문의 제목 (VARCHAR 100).
+     * 사용자가 입력하는 간결한 문의 제목. 최소 2자, 최대 100자.
+     */
+    @Column(nullable = false, length = 100)
+    private String title;
+
+    /**
+     * 문의 내용 (TEXT).
+     * 상세 문의 내용. 최소 10자, 최대 2000자 (DTO 단에서 검증).
+     * nullable = true: 제목만으로 충분한 경우 본문 없이 제출 가능.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String content;
+
+    /**
+     * 티켓 처리 상태 (기본값: OPEN).
+     * OPEN → IN_PROGRESS → RESOLVED → CLOSED 순서로 전이된다.
+     * {@link TicketStatus} 열거형 참조.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private TicketStatus status;
+
+    /**
+     * 생성자 (빌더 패턴).
+     *
+     * <p>status는 항상 {@link TicketStatus#OPEN}으로 초기화된다.
+     * 상태 변경은 비즈니스 메서드를 통해서만 수행한다.</p>
+     *
+     * @param user     티켓 작성자
+     * @param category 문의 카테고리
+     * @param title    문의 제목
+     * @param content  문의 내용
+     */
+    @Builder
+    public SupportTicket(User user, SupportCategory category, String title, String content) {
+        this.user = user;
+        this.category = category;
+        this.title = title;
+        this.content = content;
+        this.status = TicketStatus.OPEN; // 티켓 생성 시 항상 OPEN 상태
+    }
+
+    // ─────────────────────────────────────────────
+    // 도메인 메서드 (상태 전이)
+    // ─────────────────────────────────────────────
+
+    /**
+     * 처리 시작 — OPEN → IN_PROGRESS.
+     * 관리자가 티켓을 확인하고 처리를 시작할 때 호출한다.
+     */
+    public void startProcessing() {
+        this.status = TicketStatus.IN_PROGRESS;
+    }
+
+    /**
+     * 처리 완료 — IN_PROGRESS → RESOLVED.
+     * 관리자가 답변을 완료하고 해결 처리할 때 호출한다.
+     */
+    public void resolve() {
+        this.status = TicketStatus.RESOLVED;
+    }
+
+    /**
+     * 티켓 종결 — RESOLVED 또는 OPEN → CLOSED.
+     * 사용자가 해결 확인하거나 관리자가 직접 종결 처리할 때 호출한다.
+     */
+    public void close() {
+        this.status = TicketStatus.CLOSED;
+    }
+}

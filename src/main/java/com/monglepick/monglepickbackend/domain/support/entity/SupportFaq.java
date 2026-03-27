@@ -1,0 +1,140 @@
+package com.monglepick.monglepickbackend.domain.support.entity;
+
+import com.monglepick.monglepickbackend.global.entity.BaseAuditEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+/**
+ * 고객센터 FAQ 엔티티.
+ *
+ * <p>MySQL {@code support_faq} 테이블과 매핑된다.
+ * 자주 묻는 질문(FAQ)과 답변을 카테고리별로 관리하며,
+ * 사용자 피드백(도움됨/도움 안됨) 집계 카운터를 비정규화하여 보관한다.</p>
+ *
+ * <h3>피드백 카운터 비정규화</h3>
+ * <p>{@code helpful_count}와 {@code not_helpful_count}는 {@link SupportFaqFeedback}
+ * 레코드를 매번 COUNT 집계하는 대신, FAQ 엔티티에 직접 보관하여 목록 조회 성능을 최적화한다.
+ * 실제 변경은 {@link #incrementHelpful()} / {@link #incrementNotHelpful()} 메서드를 통해서만 수행한다.</p>
+ */
+@Entity
+@Table(name = "support_faq", indexes = {
+        // 카테고리별 FAQ 목록 조회 시 사용
+        @Index(name = "idx_support_faq_category", columnList = "category"),
+        // 최신순 정렬 시 사용
+        @Index(name = "idx_support_faq_created_at", columnList = "created_at")
+})
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class SupportFaq extends BaseAuditEntity {
+
+    /**
+     * FAQ 고유 식별자 (BIGINT AUTO_INCREMENT PK).
+     * DB가 자동 생성하며 변경 불가.
+     */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "faq_id")
+    private Long faqId;
+
+    /**
+     * FAQ 카테고리.
+     * GENERAL, ACCOUNT, CHAT, RECOMMENDATION, COMMUNITY, PAYMENT 중 하나.
+     * EnumType.STRING으로 DB에 문자열로 저장된다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private SupportCategory category;
+
+    /**
+     * 질문 내용 (VARCHAR 500).
+     * "비밀번호를 잊어버렸어요. 어떻게 재설정하나요?" 형태의 자연어 질문.
+     */
+    @Column(nullable = false, length = 500)
+    private String question;
+
+    /**
+     * 답변 내용 (TEXT).
+     * HTML 태그를 포함할 수 있으며, 마크다운 형식도 허용한다.
+     */
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String answer;
+
+    /**
+     * "도움됨" 피드백 카운터 (기본값 0).
+     * SupportFaqFeedback.helpful=true 레코드 수를 비정규화하여 저장한다.
+     * {@link #incrementHelpful()} 메서드로만 증가시킨다.
+     */
+    @Column(name = "helpful_count", nullable = false)
+    private int helpfulCount = 0;
+
+    /**
+     * "도움 안됨" 피드백 카운터 (기본값 0).
+     * SupportFaqFeedback.helpful=false 레코드 수를 비정규화하여 저장한다.
+     * {@link #incrementNotHelpful()} 메서드로만 증가시킨다.
+     */
+    @Column(name = "not_helpful_count", nullable = false)
+    private int notHelpfulCount = 0;
+
+    /**
+     * 생성자 (빌더 패턴).
+     *
+     * <p>helpfulCount / notHelpfulCount는 항상 0으로 초기화된다.
+     * 피드백 카운터는 비즈니스 메서드를 통해서만 변경 가능하다.</p>
+     *
+     * @param category 카테고리
+     * @param question 질문 내용
+     * @param answer   답변 내용
+     */
+    @Builder
+    public SupportFaq(SupportCategory category, String question, String answer) {
+        this.category = category;
+        this.question = question;
+        this.answer = answer;
+        this.helpfulCount = 0;
+        this.notHelpfulCount = 0;
+    }
+
+    // ─────────────────────────────────────────────
+    // 도메인 메서드
+    // ─────────────────────────────────────────────
+
+    /**
+     * 질문/답변/카테고리 수정.
+     *
+     * @param category 변경할 카테고리
+     * @param question 변경할 질문
+     * @param answer   변경할 답변
+     */
+    public void update(SupportCategory category, String question, String answer) {
+        this.category = category;
+        this.question = question;
+        this.answer = answer;
+    }
+
+    /**
+     * "도움됨" 카운터 1 증가.
+     * SupportFaqFeedbackService에서 피드백 저장 시 호출한다.
+     */
+    public void incrementHelpful() {
+        this.helpfulCount++;
+    }
+
+    /**
+     * "도움 안됨" 카운터 1 증가.
+     * SupportFaqFeedbackService에서 피드백 저장 시 호출한다.
+     */
+    public void incrementNotHelpful() {
+        this.notHelpfulCount++;
+    }
+}

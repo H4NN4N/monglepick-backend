@@ -83,7 +83,7 @@ public class SubscriptionService {
      *
      * @return 활성 구독 상품 목록 (가격 오름차순)
      */
-    @Cacheable(value = "subscriptionPlans")
+    /* 캐시 제거: 구독 상품은 조회 빈도 낮고, Redis 직렬화 이슈 방지 */
     public List<SubscriptionPlanResponse> getActivePlans() {
         log.debug("활성 구독 상품 목록 조회");
 

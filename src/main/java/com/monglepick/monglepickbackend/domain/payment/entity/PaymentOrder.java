@@ -267,6 +267,28 @@ public class PaymentOrder extends BaseAuditEntity {
         this.status = OrderStatus.REFUNDED;
     }
 
+    /**
+     * 보상 취소 실패 처리 (CRITICAL).
+     *
+     * <p>다음 두 가지가 모두 실패했을 때 호출한다:</p>
+     * <ol>
+     *   <li>Toss 결제 승인 후 DB 저장 실패</li>
+     *   <li>보상 목적으로 시도한 Toss 결제 취소도 실패</li>
+     * </ol>
+     *
+     * <p>이 상태는 사용자 카드가 청구되었으나 포인트가 미지급된 위험 상태를 의미하며,
+     * 관리자의 수동 조치가 반드시 필요하다.
+     * 실패 사유를 {@code failedReason} 필드에 기록하여 조치 시 참고할 수 있도록 한다.</p>
+     *
+     * @param reason 보상 취소 실패 사유 (Toss 에러 메시지 등)
+     */
+    public void markCompensationFailed(String reason) {
+        // PENDING 또는 FAILED 상태에서만 보상 실패 처리 가능
+        // (이미 COMPLETED·REFUNDED인 경우는 보상 대상이 아님)
+        this.status = OrderStatus.COMPENSATION_FAILED;
+        this.failedReason = reason;
+    }
+
     // ──────────────────────────────────────────────
     // 내부 enum
     // ──────────────────────────────────────────────
@@ -286,13 +308,14 @@ public class PaymentOrder extends BaseAuditEntity {
     /**
      * 주문 상태 enum.
      *
-     * <p>DDL의 {@code ENUM('pending','completed','failed','refunded')}에 대응한다.</p>
+     * <p>DDL의 {@code ENUM('pending','completed','failed','refunded','compensation_failed')}에 대응한다.</p>
      *
      * <h4>상태 전이 규칙</h4>
      * <ul>
      *   <li>PENDING → COMPLETED (결제 성공)</li>
      *   <li>PENDING → FAILED (결제 실패)</li>
      *   <li>COMPLETED → REFUNDED (환불)</li>
+     *   <li>PENDING/FAILED → COMPENSATION_FAILED (보상 취소도 실패 — 수동 조치 필요)</li>
      * </ul>
      */
     public enum OrderStatus {
@@ -303,6 +326,21 @@ public class PaymentOrder extends BaseAuditEntity {
         /** 결제 실패 */
         FAILED,
         /** 환불 완료 */
-        REFUNDED
+        REFUNDED,
+        /**
+         * 보상 취소 실패 (CRITICAL).
+         *
+         * <p>Toss 결제 승인은 성공했으나 DB 저장이 실패했고,
+         * 보상 목적으로 시도한 Toss 결제 취소까지 실패한 상태.</p>
+         *
+         * <p>사용자의 카드는 청구되었으나 포인트가 지급되지 않은 상태이므로
+         * 반드시 관리자가 수동으로 조치해야 한다.</p>
+         *
+         * <ul>
+         *   <li>조치 방법 1: Toss Payments 콘솔에서 수동 환불</li>
+         *   <li>조치 방법 2: 포인트 수동 지급 후 COMPLETED로 상태 변경</li>
+         * </ul>
+         */
+        COMPENSATION_FAILED
     }
 }

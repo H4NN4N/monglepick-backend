@@ -41,6 +41,9 @@ spring:
       hibernate:
         ## MySQL 8.0 방언 (자동 감지되지만 명시적으로 지정)
         dialect: org.hibernate.dialect.MySQLDialect
+        ## MySQL BIT(1) → Java Boolean 매핑 (TINYINT로 처리)
+        type:
+          preferred_boolean_jdbc_type: INTEGER
         ## SQL 포맷팅 (개발 시 가독성 향상)
         format_sql: true
         ## 배치 INSERT/UPDATE 최적화
@@ -132,6 +135,14 @@ app:
     access-token-expiry: ${JWT_ACCESS_EXPIRY:3600000}
     refresh-token-expiry: ${JWT_REFRESH_EXPIRY:604800000}
 
+  ## -------------------------------------------------------------------------
+  ## 쿠키 보안 설정
+  ## -------------------------------------------------------------------------
+  ## APP_COOKIE_SECURE=true 로 설정 시 HTTPS 전용 쿠키 활성화 (운영 환경 필수)
+  ## 개발 환경(HTTP)에서는 false(기본값) 유지
+  cookie:
+    secure: ${APP_COOKIE_SECURE:false}
+
   ## 등급별 AI 추천 쿼터 (-1 = 무제한)
   quota:
     bronze:
@@ -154,6 +165,29 @@ app:
       monthly-limit: -1
       free-daily: 10
       max-input-length: 2000
+
+## ---------------------------------------------------------------------------
+## Swagger UI 접근 제어
+## ---------------------------------------------------------------------------
+## SWAGGER_ENABLED=false 설정 시 Swagger UI 및 OpenAPI 문서 완전 비활성화
+## 로컬/스테이징: true (기본값), 운영: false 필수
+springdoc:
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+
+## ---------------------------------------------------------------------------
+## 개발 전용 인증 설정 (Swagger UI 테스트용)
+## ---------------------------------------------------------------------------
+## DEV_AUTH_ENABLED=true 로 설정 시 /api/v1/dev/token 엔드포인트가 활성화되어
+## Swagger UI에서 간편하게 JWT 토큰을 발급받아 API 테스트 가능
+## ⚠ 운영 환경에서는 반드시 false(기본값)로 유지
+dev:
+  auth:
+    enabled: ${DEV_AUTH_ENABLED:false}
+  ## 마스터키: Swagger UI에서 Authorize → DevMasterKeyAuth에 이 값을 입력하면 ADMIN 인증 통과
+  master-key: ${DEV_MASTER_KEY:monglepick-dev-master-2026}
 
 ## ---------------------------------------------------------------------------
 ## Toss Payments 설정

@@ -206,7 +206,7 @@ public final class PaymentDto {
             int price,
             int pointsPerPeriod,
             String description
-    ) {
+    ) implements java.io.Serializable {
     }
 
     // ──────────────────────────────────────────────

@@ -186,7 +186,23 @@ public enum ErrorCode {
     DUPLICATE_WISHLIST(HttpStatus.CONFLICT, "WISH001", "이미 위시리스트에 추가된 영화입니다"),
 
     /** 위시리스트에서 해당 영화 항목을 찾을 수 없음. */
-    WISHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "WISH002", "위시리스트 항목을 찾을 수 없습니다");
+    WISHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "WISH002", "위시리스트 항목을 찾을 수 없습니다"),
+
+    // ─────────────────────────────────────────────
+    // 고객센터 (SUPPORT0xx)
+    // ─────────────────────────────────────────────
+
+    /** faqId에 해당하는 FAQ를 찾을 수 없음. */
+    FAQ_NOT_FOUND(HttpStatus.NOT_FOUND, "SUPPORT001", "FAQ를 찾을 수 없습니다"),
+
+    /** articleId에 해당하는 도움말 문서를 찾을 수 없음. */
+    HELP_ARTICLE_NOT_FOUND(HttpStatus.NOT_FOUND, "SUPPORT002", "도움말 문서를 찾을 수 없습니다"),
+
+    /** ticketId에 해당하는 상담 티켓을 찾을 수 없음. */
+    TICKET_NOT_FOUND(HttpStatus.NOT_FOUND, "SUPPORT003", "상담 티켓을 찾을 수 없습니다"),
+
+    /** 동일 사용자가 같은 FAQ에 피드백을 이미 제출한 경우 (faq_id + user_id UK 위반). */
+    FAQ_FEEDBACK_DUPLICATE(HttpStatus.CONFLICT, "SUPPORT005", "이미 피드백을 제출했습니다");
 
     // ─────────────────────────────────────────────
     // 필드

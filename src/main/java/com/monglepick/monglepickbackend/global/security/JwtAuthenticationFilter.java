@@ -139,13 +139,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     /**
      * HTTP 요청의 Authorization 헤더에서 Bearer 토큰을 추출한다.
      *
+     * <p>다음 세 가지 경우 모두 null을 반환하여 인증 없이 필터 체인을 계속 진행한다:</p>
+     * <ul>
+     *   <li>Authorization 헤더 자체가 없는 경우</li>
+     *   <li>"Bearer " 접두사로 시작하지 않는 경우</li>
+     *   <li>"Bearer " 접두사 제거 후 토큰 값이 빈 문자열이거나 공백만 있는 경우
+     *       (예: "Bearer " 또는 "Bearer   " 형태의 잘못된 헤더)</li>
+     * </ul>
+     *
+     * <p>[W-B1] 빈 토큰 체크: {@code isBlank()}로 공백 문자열도 방어한다.
+     * 빈 토큰을 {@link com.monglepick.monglepickbackend.global.security.JwtTokenProvider#parse}에
+     * 전달하면 파싱 예외가 발생할 수 있으므로, 사전에 차단하여 불필요한 예외 처리를 방지한다.</p>
+     *
      * @param request HTTP 요청 객체
-     * @return Bearer 토큰 문자열 (헤더가 없거나 형식이 다르면 null)
+     * @return Bearer 접두사를 제거한 토큰 문자열, 헤더 없음/형식 불일치/빈 값이면 null
      */
     private String extractToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith(BEARER_PREFIX)) {
-            return header.substring(BEARER_PREFIX.length());
+            String token = header.substring(BEARER_PREFIX.length());
+            // [W-B1] Bearer 접두사 제거 후 빈 문자열 또는 공백만 남은 경우 null 반환
+            // 예: "Bearer " → token="" → isBlank()=true → null 반환 → 필터 체인 계속
+            if (token.isBlank()) {
+                log.debug("Bearer 토큰 값이 비어있음 (인증 없이 진행) — URI: {}", request.getRequestURI());
+                return null;
+            }
+            return token;
         }
         return null;
     }
