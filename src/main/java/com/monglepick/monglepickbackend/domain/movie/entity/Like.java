@@ -23,6 +23,19 @@ import java.time.LocalDateTime;
  * 소프트 삭제(deleted_at)를 지원하여, 좋아요 취소 시 레코드를 삭제하지 않고
  * deleted_at에 삭제 시각을 기록한다.</p>
  *
+ * <h3>⚠️ 2026-04-07 DEPRECATED — monglepick-recommend(FastAPI)로 이관</h3>
+ * <p>영화 좋아요 도메인은 Redis 캐싱 + TTL 만료 시 RDB 적재(write-behind) 패턴을
+ * 채택하면서 monglepick-recommend(FastAPI :8001)로 이관되었다. 운영 환경에서는
+ * Nginx가 {@code /api/v1/movies/&#123;id&#125;/like*} 경로를 recommend로 프록시한다.</p>
+ *
+ * <p>본 @Entity 클래스는 <b>DDL 마스터로서만 유지</b>된다 — Backend Spring Boot가
+ * {@code ddl-auto=update}로 `likes` 테이블 스키마를 관리하며, recommend FastAPI는
+ * 이 스키마에 맞춰 Raw SQL로 읽고 쓴다. 따라서 엔티티 삭제는 금지.</p>
+ *
+ * <p>Nginx 라우팅이 적용되지 않은 로컬 개발 환경에서는 {@link com.monglepick.monglepickbackend.domain.movie.controller.LikeController}가
+ * 여전히 fallback 경로로 동작한다. 신규 기능 추가·변경은 모두 recommend 프로젝트의
+ * {@code app/v2/api/like.py} / {@code app/v2/service/like_service.py}에서 이뤄져야 한다.</p>
+ *
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code userId} — 사용자 ID</li>
@@ -35,9 +48,13 @@ import java.time.LocalDateTime;
  *
  * <h3>타임스탬프</h3>
  * <p>BaseAuditEntity 상속으로 created_at, updated_at, created_by, updated_by 자동 관리.
- * 기존 수동 @CreationTimestamp created_at 필드 제거됨.
- * deletedAt은 소프트 삭제용 도메인 고유 필드이므로 유지.</p>
+ * recommend FastAPI의 Raw SQL INSERT에서는 created_by/updated_by를
+ * {@code "recommend-like-service"}로 하드코딩하여 이관 출처를 추적한다.</p>
+ *
+ * @deprecated 2026-04-07 — movie Like 도메인은 monglepick-recommend(FastAPI)로 이관됨.
+ *     DDL 정의 전용으로만 유지. 신규 수정 금지. 상세: docs/movie_like_recommend_migration.md
  */
+@Deprecated(since = "2026-04-07", forRemoval = false)
 @Entity
 @Table(
         name = "likes",
