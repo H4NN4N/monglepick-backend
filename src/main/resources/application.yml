@@ -158,6 +158,12 @@ logging:
 ## 서비스 키, 포인트 시스템, 등급별 일일/월간 이용 제한 등
 ## 환경변수로 오버라이드 가능: SERVICE_API_KEY, FREE_POINTS_ON_SIGNUP 등
 app:
+  ## 관리자 시드 계정 (DataInitializer가 기동 시 1회 생성, 멱등)
+  ## 환경변수(.env) 미설정 시 의도적으로 기동 실패하여 누락 방지
+  admin:
+    email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}
+    nickname: ${ADMIN_NICKNAME}
   service:
     ## ⚠ 운영 환경에서는 반드시 SERVICE_API_KEY 환경변수를 설정해야 합니다
     key: ${SERVICE_API_KEY:dev-service-key-change-me}
