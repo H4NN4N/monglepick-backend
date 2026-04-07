@@ -15,6 +15,14 @@ import java.util.Optional;
  *
  * <p>영화 좋아요 토글(등록/취소/복구), 좋아요 상태 조회, 좋아요 수 조회 비즈니스 로직을 처리한다.</p>
  *
+ * <h3>⚠️ 2026-04-07 DEPRECATED — monglepick-recommend(FastAPI)로 이관</h3>
+ * <p>본 서비스는 Redis 캐싱 + write-behind 패턴을 채택한 recommend FastAPI로 이관되었다.
+ * 운영 환경에서는 Nginx가 {@code /api/v1/movies/&#123;id&#125;/like*} 경로를 recommend로
+ * 프록시하므로 이 클래스는 호출되지 않는다. 로컬/레거시 환경 fallback용으로만 유지.</p>
+ * <p>새로운 비즈니스 로직은 {@code monglepick-recommend/app/v2/service/like_service.py}의
+ * {@code LikeService}에 추가하고, Redis `like:count:*` / `like:user:*` / `like:dirty`
+ * 키 스키마를 준수해야 한다.</p>
+ *
  * <h3>소프트 삭제 정책</h3>
  * <p>좋아요 취소 시 레코드를 물리적으로 삭제하지 않고 {@code deleted_at}에 현재 시각을 기록한다.
  * 이를 통해 이력 조회가 가능하고, UNIQUE(user_id, movie_id) 제약을 유지하면서
@@ -29,7 +37,10 @@ import java.util.Optional;
  *
  * @see LikeRepository
  * @see Like
+ * @deprecated 2026-04-07 — movie Like 도메인은 monglepick-recommend(FastAPI)로 이관됨.
+ *     신규 수정 금지. 상세: docs/movie_like_recommend_migration.md
  */
+@Deprecated(since = "2026-04-07", forRemoval = false)
 @Slf4j
 @Service
 @RequiredArgsConstructor

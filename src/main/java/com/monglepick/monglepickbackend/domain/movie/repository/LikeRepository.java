@@ -11,6 +11,13 @@ import java.util.Optional;
  * <p>likes 테이블에 대한 JPA 쿼리를 제공한다.
  * 소프트 삭제(deleted_at) 기반으로 활성/취소 좋아요를 구분한다.</p>
  *
+ * <h3>⚠️ 2026-04-07 DEPRECATED — monglepick-recommend(FastAPI)로 이관</h3>
+ * <p>영화 좋아요 도메인은 Redis 캐싱 + write-behind 패턴을 채택하면서
+ * monglepick-recommend(FastAPI)로 이관되었다. 본 리포지토리는 Nginx 프록시가
+ * 적용되지 않은 환경(로컬 개발 등)에서 fallback용으로만 유지된다.</p>
+ * <p>신규 쿼리 메서드는 {@code monglepick-recommend/app/v2/repository/like_repository.py}의
+ * {@code LikeRepository}(Raw SQL)에 추가해야 한다.</p>
+ *
  * <h3>소프트 삭제 정책</h3>
  * <ul>
  *   <li>활성 좋아요: {@code deleted_at IS NULL}</li>
@@ -18,7 +25,9 @@ import java.util.Optional;
  * </ul>
  *
  * @see Like
+ * @deprecated 2026-04-07 — movie Like 도메인 이관. 신규 수정 금지. 상세: docs/movie_like_recommend_migration.md
  */
+@Deprecated(since = "2026-04-07", forRemoval = false)
 public interface LikeRepository extends JpaRepository<Like, Long> {
 
     /**
