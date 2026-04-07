@@ -24,6 +24,14 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>영화 좋아요 토글, 상태 조회, 수 조회 API를 제공한다.</p>
  *
+ * <h3>⚠️ 2026-04-07 DEPRECATED — monglepick-recommend(FastAPI)로 이관</h3>
+ * <p>운영 환경에서는 Nginx가 본 컨트롤러의 3개 엔드포인트를 모두 recommend(:8001)로
+ * 프록시하므로, 실제 요청은 FastAPI의 {@code app/v2/api/like.py}가 처리한다.
+ * 응답 JSON(`liked`, `likeCount`)은 recommend 쪽과 1:1 동일하게 유지되므로
+ * Frontend 변경 없이 이관이 완료된다.</p>
+ * <p>본 컨트롤러는 Nginx가 없는 로컬 개발/레거시 환경의 fallback 용도로만 유지된다.
+ * 신규 엔드포인트 추가는 recommend {@code app/v2/api/like.py}에서 수행할 것.</p>
+ *
  * <h3>인증 정책</h3>
  * <ul>
  *   <li>POST /api/v1/movies/{movieId}/like — JWT 필수 (좋아요 토글)</li>
@@ -37,8 +45,13 @@ import org.springframework.web.bind.annotation.RestController;
  * GET  /api/v1/movies/{movieId}/like        → isLiked
  * GET  /api/v1/movies/{movieId}/like/count  → getLikeCount
  * </pre>
+ *
+ * @deprecated 2026-04-07 — movie Like 도메인 이관. Nginx 프록시 환경에서는 호출되지 않음.
+ *     신규 수정 금지. 상세: docs/movie_like_recommend_migration.md
  */
-@Tag(name = "영화 좋아요", description = "영화 좋아요 토글, 상태 조회, 수 조회 API")
+@Deprecated(since = "2026-04-07", forRemoval = false)
+@Tag(name = "영화 좋아요 (Deprecated, recommend FastAPI로 이관됨)",
+     description = "⚠️ 2026-04-07 monglepick-recommend로 이관. Nginx 프록시 환경에서는 이 컨트롤러가 호출되지 않으며 fallback용으로만 유지된다.")
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/movies/{movieId}/like")
