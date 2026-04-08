@@ -98,6 +98,17 @@ public class User extends BaseAuditEntity {
     @Column(name = "suspended_at")
     private LocalDateTime suspendedAt;
 
+    /**
+     * 계정 정지 해제 예정 시각 (임시 정지용, nullable).
+     *
+     * <p>값이 있으면 해당 시각 이후 자동 복구 대상.
+     * null이면 영구 정지(관리자 수동 복구 전까지 유지).</p>
+     *
+     * <p>JPA {@code ddl-auto=update}로 자동 컬럼 추가.</p>
+     */
+    @Column(name = "suspended_until")
+    private LocalDateTime suspendedUntil;
+
     /** 계정 정지 사유 (관리자 사용자 관리: 정지 사유 기록) */
     @Column(name = "suspend_reason", length = 500)
     private String suspendReason;
@@ -185,10 +196,28 @@ public class User extends BaseAuditEntity {
         this.passwordHash = passwordHash;
     }
 
-    /** 계정 정지 (관리자 기능) */
+    /**
+     * 계정 정지 (관리자 기능 — 영구 정지).
+     *
+     * <p>suspendedUntil=null 로 설정되어 자동 복구 대상에서 제외된다.</p>
+     */
     public void suspend(String reason) {
         this.status = UserStatus.SUSPENDED;
         this.suspendedAt = LocalDateTime.now();
+        this.suspendedUntil = null;
+        this.suspendReason = reason;
+    }
+
+    /**
+     * 계정 임시 정지 (관리자 기능 — 일정 기간 후 자동 복구).
+     *
+     * @param reason 정지 사유
+     * @param until  정지 해제 예정 시각 (현재 시각보다 미래여야 함)
+     */
+    public void suspendUntil(String reason, LocalDateTime until) {
+        this.status = UserStatus.SUSPENDED;
+        this.suspendedAt = LocalDateTime.now();
+        this.suspendedUntil = until;
         this.suspendReason = reason;
     }
 
@@ -196,6 +225,7 @@ public class User extends BaseAuditEntity {
     public void activate() {
         this.status = UserStatus.ACTIVE;
         this.suspendedAt = null;
+        this.suspendedUntil = null;
         this.suspendReason = null;
     }
 

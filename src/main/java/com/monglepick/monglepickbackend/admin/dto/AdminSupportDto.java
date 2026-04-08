@@ -21,6 +21,8 @@ public final class AdminSupportDto {
     }
 
     // ======================== 공지사항 ========================
+    // 2026-04-08: 구 AppNotice 통합으로 7개 앱 메인 노출 필드 흡수
+    //   (displayType/linkUrl/imageUrl/startAt/endAt/priority/isActive)
 
     /**
      * 공지사항 응답 DTO.
@@ -28,10 +30,17 @@ public final class AdminSupportDto {
      * @param noticeId    공지 PK
      * @param title       제목
      * @param content     본문
-     * @param noticeType  유형 (NOTICE/UPDATE/MAINTENANCE)
+     * @param noticeType  콘텐츠 카테고리 (NOTICE/UPDATE/MAINTENANCE/EVENT)
+     * @param displayType 노출 방식 (LIST_ONLY/BANNER/POPUP/MODAL) — 구 AppNotice 흡수
      * @param isPinned    상단 고정 여부
      * @param sortOrder   정렬 순서 (nullable)
      * @param publishedAt 공개 시각 (nullable)
+     * @param linkUrl     배너 클릭 시 이동 URL (nullable, 구 AppNotice 흡수)
+     * @param imageUrl    배너/팝업 이미지 URL (nullable, 구 AppNotice 흡수)
+     * @param startAt     앱 메인 노출 시작 (nullable, 구 AppNotice 흡수)
+     * @param endAt       앱 메인 노출 종료 (nullable, 구 AppNotice 흡수)
+     * @param priority    정렬 우선순위 (구 AppNotice 흡수)
+     * @param isActive    앱 메인 노출 활성 토글 (구 AppNotice 흡수)
      * @param createdAt   등록 시각
      * @param updatedAt   수정 시각
      */
@@ -40,9 +49,16 @@ public final class AdminSupportDto {
             String title,
             String content,
             String noticeType,
+            String displayType,
             Boolean isPinned,
             Integer sortOrder,
             LocalDateTime publishedAt,
+            String linkUrl,
+            String imageUrl,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            Integer priority,
+            Boolean isActive,
             LocalDateTime createdAt,
             LocalDateTime updatedAt
     ) {}
@@ -59,11 +75,28 @@ public final class AdminSupportDto {
             @Size(max = 30, message = "유형 코드는 최대 30자입니다.")
             String noticeType,
 
+            /** 노출 방식 (LIST_ONLY/BANNER/POPUP/MODAL, 기본 LIST_ONLY). */
+            @Size(max = 20)
+            String displayType,
+
             Boolean isPinned,
 
             Integer sortOrder,
 
-            LocalDateTime publishedAt
+            LocalDateTime publishedAt,
+
+            @Size(max = 500, message = "링크 URL은 500자 이하여야 합니다.")
+            String linkUrl,
+
+            @Size(max = 500, message = "이미지 URL은 500자 이하여야 합니다.")
+            String imageUrl,
+
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+
+            Integer priority,
+
+            Boolean isActive
     ) {}
 
     /** 공지사항 수정 요청 DTO. */
@@ -78,11 +111,27 @@ public final class AdminSupportDto {
             @Size(max = 30, message = "유형 코드는 최대 30자입니다.")
             String noticeType,
 
+            @Size(max = 20)
+            String displayType,
+
             Boolean isPinned,
 
             Integer sortOrder,
 
-            LocalDateTime publishedAt
+            LocalDateTime publishedAt,
+
+            @Size(max = 500, message = "링크 URL은 500자 이하여야 합니다.")
+            String linkUrl,
+
+            @Size(max = 500, message = "이미지 URL은 500자 이하여야 합니다.")
+            String imageUrl,
+
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+
+            Integer priority,
+
+            Boolean isActive
     ) {}
 
     /**
@@ -93,6 +142,15 @@ public final class AdminSupportDto {
     public record NoticeReorderRequest(
             @NotNull(message = "공지 ID 리스트는 필수입니다.")
             List<Long> orderedIds
+    ) {}
+
+    /**
+     * 공지 활성/비활성 토글 요청 DTO (앱 메인 노출 제어).
+     *
+     * 2026-04-08: 구 AppNotice.UpdateActiveRequest 흡수.
+     */
+    public record NoticeActiveUpdateRequest(
+            Boolean isActive
     ) {}
 
     // ======================== FAQ ========================
@@ -295,40 +353,5 @@ public final class AdminSupportDto {
             long closed
     ) {}
 
-    // ======================== 비속어 사전 ========================
-
-    /** 비속어 응답 DTO. */
-    public record ProfanityResponse(
-            Long profanityId,
-            String word,
-            String severity,
-            String note,
-            LocalDateTime createdAt
-    ) {}
-
-    /** 비속어 등록 요청 DTO. */
-    public record ProfanityCreateRequest(
-            @NotBlank(message = "단어는 필수입니다.")
-            @Size(max = 100, message = "단어는 최대 100자입니다.")
-            String word,
-
-            @Size(max = 20, message = "유해 단계는 최대 20자입니다.")
-            String severity,
-
-            @Size(max = 300, message = "비고는 최대 300자입니다.")
-            String note
-    ) {}
-
-    /**
-     * 비속어 CSV 임포트 응답 DTO.
-     *
-     * @param inserted 신규 등록된 단어 수
-     * @param skipped  중복으로 건너뛴 단어 수
-     * @param message  처리 결과 안내 메시지
-     */
-    public record ProfanityImportResponse(
-            int inserted,
-            int skipped,
-            String message
-    ) {}
+    // 2026-04-08: 비속어 사전 DTO (ProfanityResponse/ProfanityCreateRequest/ProfanityImportResponse) 제거
 }

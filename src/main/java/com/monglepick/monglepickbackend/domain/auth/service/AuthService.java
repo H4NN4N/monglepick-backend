@@ -158,12 +158,35 @@ public class AuthService extends DefaultOAuth2UserService implements UserDetails
             throw new UsernameNotFoundException("소셜 로그인 계정입니다. " + user.getProvider() + " 로그인을 사용하세요.");
         }
 
+        /*
+         * 2026-04-08 버그 수정 — 관리자가 정지(SUSPENDED)·잠금(LOCKED) 처리한 계정이
+         * 그대로 로그인되는 문제를 차단한다. Spring Security 의 UserDetails.disabled /
+         * accountLocked 플래그를 설정하여 DaoAuthenticationProvider.preAuthenticationChecks 가
+         * 각각 DisabledException / LockedException 을 던지도록 한다. LoginFilter 는
+         * 이를 AuthenticationException 으로 받아 401 INVALID_CREDENTIALS 로 응답한다.
+         *
+         * NOTE: 임시 정지(suspendedUntil) 자동 복구는 이 메서드의 readOnly 트랜잭션
+         *       제약 때문에 여기서 처리하지 않는다. 별도 스케줄러/관리자 수동 복구로 처리.
+         */
+        User.UserStatus status = user.getStatus();
+        boolean disabled       = (status == User.UserStatus.SUSPENDED);
+        boolean accountLocked  = (status == User.UserStatus.LOCKED);
+
+        if (disabled) {
+            log.warn("[AuthService] 정지 계정 로그인 차단 — email={}, suspendedUntil={}",
+                    email, user.getSuspendedUntil());
+        } else if (accountLocked) {
+            log.warn("[AuthService] 잠금 계정 로그인 차단 — email={}", email);
+        }
+
         /* userRole에서 실제 권한을 읽어 설정 (ADMIN 계정이 ROLE_USER로 로드되는 버그 수정) */
         String role = "ROLE_" + (user.getUserRole() != null ? user.getUserRole().name() : "USER");
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getEmail())
                 .password(user.getPasswordHash())
                 .authorities(role)
+                .disabled(disabled)
+                .accountLocked(accountLocked)
                 .build();
     }
 

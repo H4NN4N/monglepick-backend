@@ -7,13 +7,11 @@ import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.FaqUpdateReque
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.HelpArticleCreateRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.HelpArticleResponse;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.HelpArticleUpdateRequest;
+import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.NoticeActiveUpdateRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.NoticeCreateRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.NoticeReorderRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.NoticeResponse;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.NoticeUpdateRequest;
-import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.ProfanityCreateRequest;
-import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.ProfanityImportResponse;
-import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.ProfanityResponse;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.TicketDetail;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.TicketReplyItem;
 import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.TicketReplyRequest;
@@ -23,14 +21,12 @@ import com.monglepick.monglepickbackend.admin.dto.AdminSupportDto.TicketSummary;
 import com.monglepick.monglepickbackend.admin.repository.AdminFaqRepository;
 import com.monglepick.monglepickbackend.admin.repository.AdminHelpArticleRepository;
 import com.monglepick.monglepickbackend.admin.repository.AdminNoticeRepository;
-import com.monglepick.monglepickbackend.admin.repository.AdminProfanityRepository;
 import com.monglepick.monglepickbackend.admin.repository.AdminTicketReplyRepository;
 import com.monglepick.monglepickbackend.admin.repository.AdminTicketRepository;
 import com.monglepick.monglepickbackend.domain.support.entity.SupportCategory;
 import com.monglepick.monglepickbackend.domain.support.entity.SupportFaq;
 import com.monglepick.monglepickbackend.domain.support.entity.SupportHelpArticle;
 import com.monglepick.monglepickbackend.domain.support.entity.SupportNotice;
-import com.monglepick.monglepickbackend.domain.support.entity.SupportProfanity;
 import com.monglepick.monglepickbackend.domain.support.entity.SupportTicket;
 import com.monglepick.monglepickbackend.domain.support.entity.TicketReply;
 import com.monglepick.monglepickbackend.domain.support.entity.TicketStatus;
@@ -43,26 +39,24 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
  * 관리자 고객센터 서비스.
  *
- * <p>관리자 페이지 "고객센터" 탭의 23개 기능에 대한 비즈니스 로직을 담당한다.
- * 설계서 {@code docs/관리자페이지_설계서.md} §3.3 고객센터(23 API).</p>
+ * <p>관리자 페이지 "고객센터" 탭의 비즈니스 로직을 담당한다.
+ * 설계서 {@code docs/관리자페이지_설계서.md} §3.3 고객센터 참조.</p>
  *
- * <h3>담당 기능</h3>
+ * <h3>담당 기능 (19개)</h3>
  * <ul>
  *   <li>공지사항: 목록 / 등록 / 수정 / 삭제 / 순서변경 (5)</li>
  *   <li>FAQ: 목록 / 등록 / 수정 / 삭제 / 순서변경 (5)</li>
  *   <li>도움말: 목록 / 등록 / 수정 / 삭제 (4)</li>
  *   <li>티켓: 목록 / 상세 / 답변작성 / 상태변경 / 통계 (5)</li>
- *   <li>비속어: 목록 / 추가 / 삭제 / CSV 임포트 (4)</li>
  * </ul>
+ *
+ * <p>2026-04-08: 비속어 사전(Profanity) 섹션 제거 — 관리자 요청으로 기능 삭제.</p>
  */
 @Slf4j
 @Service
@@ -85,10 +79,9 @@ public class AdminSupportService {
     /** 티켓 답변 리포지토리 */
     private final AdminTicketReplyRepository adminTicketReplyRepository;
 
-    /** 비속어 리포지토리 */
-    private final AdminProfanityRepository adminProfanityRepository;
-
     // ======================== 공지사항 ========================
+    // 2026-04-08: 구 AppNotice 통합 — displayType/linkUrl/imageUrl/startAt/endAt/
+    //             priority/isActive 7개 필드가 SupportNotice로 흡수되었다.
 
     /** 공지사항 목록 조회 (유형 필터 선택). */
     public Page<NoticeResponse> getNotices(String noticeType, Pageable pageable) {
@@ -103,40 +96,90 @@ public class AdminSupportService {
         return result.map(this::toNoticeResponse);
     }
 
+    /** 공지사항 단건 조회. */
+    public NoticeResponse getNotice(Long id) {
+        return toNoticeResponse(findNoticeOrThrow(id));
+    }
+
+    /**
+     * 앱 메인 노출 중 공지 목록 조회 (비로그인 API 용, 구 AppNotice 흡수).
+     *
+     * @param displayType BANNER/POPUP/MODAL 필터 (null 이면 전체 앱 메인 노출)
+     * @return 노출 중 공지 목록
+     */
+    public List<NoticeResponse> getActiveAppNotices(String displayType) {
+        String filter = null;
+        if (displayType != null && !displayType.isBlank()) {
+            String upper = displayType.trim().toUpperCase();
+            if (!"BANNER".equals(upper) && !"POPUP".equals(upper) && !"MODAL".equals(upper)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "허용되지 않은 노출 방식: " + displayType + " (BANNER/POPUP/MODAL)");
+            }
+            filter = upper;
+        }
+        return adminNoticeRepository.findActiveAppNotices(LocalDateTime.now(), filter)
+                .stream().map(this::toNoticeResponse).toList();
+    }
+
     /** 공지사항 등록. */
     @Transactional
     public NoticeResponse createNotice(NoticeCreateRequest request) {
-        log.info("[AdminSupport] 공지 등록 — title={}", request.title());
+        log.info("[AdminSupport] 공지 등록 — title={}, displayType={}",
+                request.title(), request.displayType());
+        validatePeriod(request.startAt(), request.endAt());
+
+        String displayType = normalizeDisplayType(request.displayType());
         SupportNotice notice = SupportNotice.builder()
                 .title(request.title())
                 .content(request.content())
                 .noticeType(request.noticeType() != null ? request.noticeType().toUpperCase() : "NOTICE")
+                .displayType(displayType != null ? displayType : "LIST_ONLY")
                 .isPinned(request.isPinned() != null ? request.isPinned() : false)
                 .sortOrder(request.sortOrder())
                 .publishedAt(request.publishedAt())
+                .linkUrl(request.linkUrl())
+                .imageUrl(request.imageUrl())
+                .startAt(request.startAt())
+                .endAt(request.endAt())
+                .priority(request.priority() != null ? request.priority() : 0)
+                .isActive(request.isActive() == null || request.isActive())
                 .build();
         SupportNotice saved = adminNoticeRepository.save(notice);
         return toNoticeResponse(saved);
     }
 
-    /** 공지사항 수정. */
+    /** 공지사항 수정 (기본 필드 + 앱 메인 노출 필드 통합 업데이트). */
     @Transactional
     public NoticeResponse updateNotice(Long id, NoticeUpdateRequest request) {
         log.info("[AdminSupport] 공지 수정 — noticeId={}", id);
-        SupportNotice notice = adminNoticeRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
-                        "공지사항을 찾을 수 없습니다: id=" + id));
+        validatePeriod(request.startAt(), request.endAt());
 
-        notice.update(request.title(), request.content(), request.noticeType());
-        if (request.isPinned() != null) {
-            notice.setPinned(request.isPinned());
-        }
-        if (request.sortOrder() != null) {
-            notice.updateSortOrder(request.sortOrder());
-        }
-        if (request.publishedAt() != null) {
-            notice.publish(request.publishedAt());
-        }
+        SupportNotice notice = findNoticeOrThrow(id);
+        notice.updateAll(
+                request.title(),
+                request.content(),
+                request.noticeType() != null ? request.noticeType().toUpperCase() : null,
+                normalizeDisplayType(request.displayType()),
+                request.isPinned(),
+                request.sortOrder(),
+                request.publishedAt(),
+                request.linkUrl(),
+                request.imageUrl(),
+                request.startAt(),
+                request.endAt(),
+                request.priority(),
+                request.isActive()
+        );
+        return toNoticeResponse(notice);
+    }
+
+    /** 공지 활성/비활성 토글 (앱 메인 노출 제어, 구 AppNotice 흡수). */
+    @Transactional
+    public NoticeResponse updateNoticeActive(Long id, NoticeActiveUpdateRequest request) {
+        log.info("[AdminSupport] 공지 활성 토글 — noticeId={}, isActive={}",
+                id, request.isActive());
+        SupportNotice notice = findNoticeOrThrow(id);
+        notice.updateActive(Boolean.TRUE.equals(request.isActive()));
         return toNoticeResponse(notice);
     }
 
@@ -165,6 +208,42 @@ public class AdminSupportService {
             int sortOrder = i;
             adminNoticeRepository.findById(id)
                     .ifPresent(notice -> notice.updateSortOrder(sortOrder));
+        }
+    }
+
+    // ── 공지 헬퍼 ─────────────────────────────────────────
+
+    /** 공지 단건 조회 헬퍼 (없으면 예외). */
+    private SupportNotice findNoticeOrThrow(Long id) {
+        return adminNoticeRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
+                        "공지사항을 찾을 수 없습니다: id=" + id));
+    }
+
+    /**
+     * displayType 정규화.
+     * null/blank → null (도메인 메서드에서 무시됨) / 유효값 → 대문자 / 잘못된 값 → 예외.
+     */
+    private String normalizeDisplayType(String displayType) {
+        if (displayType == null || displayType.isBlank()) return null;
+        String upper = displayType.trim().toUpperCase();
+        switch (upper) {
+            case "LIST_ONLY":
+            case "BANNER":
+            case "POPUP":
+            case "MODAL":
+                return upper;
+            default:
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "허용되지 않은 노출 방식: " + displayType
+                                + " (LIST_ONLY/BANNER/POPUP/MODAL)");
+        }
+    }
+
+    /** startAt/endAt 유효성 검증 — endAt은 startAt 이후여야 함 (둘 다 지정된 경우). */
+    private void validatePeriod(LocalDateTime start, LocalDateTime end) {
+        if (start != null && end != null && !end.isAfter(start)) {
+            throw new BusinessException(ErrorCode.INVALID_NOTICE_PERIOD);
         }
     }
 
@@ -403,122 +482,8 @@ public class AdminSupportService {
         return new TicketStats(total, open, inProgress, resolved, closed);
     }
 
-    // ======================== 비속어 ========================
-
-    /** 비속어 목록 조회. */
-    public Page<ProfanityResponse> getProfanities(Pageable pageable) {
-        log.debug("[AdminSupport] 비속어 목록 조회 — page={}", pageable.getPageNumber());
-        return adminProfanityRepository.findAllByOrderByWordAsc(pageable)
-                .map(this::toProfanityResponse);
-    }
-
-    /** 비속어 추가. */
-    @Transactional
-    public ProfanityResponse addProfanity(ProfanityCreateRequest request) {
-        log.info("[AdminSupport] 비속어 추가 — word={}", request.word());
-        if (adminProfanityRepository.findByWord(request.word()).isPresent()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT,
-                    "이미 등록된 단어입니다: " + request.word());
-        }
-        SupportProfanity profanity = SupportProfanity.builder()
-                .word(request.word())
-                .severity(request.severity() != null ? request.severity().toUpperCase() : "MEDIUM")
-                .note(request.note())
-                .build();
-        return toProfanityResponse(adminProfanityRepository.save(profanity));
-    }
-
-    /** 비속어 삭제. */
-    @Transactional
-    public void deleteProfanity(Long id) {
-        log.info("[AdminSupport] 비속어 삭제 — id={}", id);
-        if (!adminProfanityRepository.existsById(id)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT,
-                    "비속어를 찾을 수 없습니다: id=" + id);
-        }
-        adminProfanityRepository.deleteById(id);
-    }
-
-    /**
-     * 비속어 CSV 임포트.
-     *
-     * <p>CSV 형식: {@code word,severity,note}. 첫 줄이 헤더이면 건너뛴다.
-     * 이미 등록된 단어는 skipped 카운트에 포함된다.</p>
-     *
-     * @param csvContent CSV 파일 바이트 배열
-     * @return 임포트 결과
-     */
-    @Transactional
-    public ProfanityImportResponse importProfanityCsv(byte[] csvContent) {
-        log.info("[AdminSupport] 비속어 CSV 임포트 — size={}B", csvContent.length);
-        int inserted = 0;
-        int skipped = 0;
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(new java.io.ByteArrayInputStream(csvContent), StandardCharsets.UTF_8))) {
-
-            String line;
-            boolean isFirstLine = true;
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty()) {
-                    continue;
-                }
-
-                // 헤더 행 건너뛰기 (word 로 시작하는 경우)
-                if (isFirstLine) {
-                    isFirstLine = false;
-                    if (line.toLowerCase().startsWith("word")) {
-                        continue;
-                    }
-                }
-
-                String[] parts = line.split(",", 3);
-                String word = parts[0].trim().replaceAll("^\"|\"$", "");
-                if (word.isEmpty()) {
-                    continue;
-                }
-
-                if (adminProfanityRepository.findByWord(word).isPresent()) {
-                    skipped++;
-                    continue;
-                }
-
-                String severity = parts.length > 1 ? parts[1].trim().toUpperCase() : "MEDIUM";
-                String note = parts.length > 2 ? parts[2].trim() : null;
-
-                SupportProfanity profanity = SupportProfanity.builder()
-                        .word(word)
-                        .severity(severity.isEmpty() ? "MEDIUM" : severity)
-                        .note(note)
-                        .build();
-                adminProfanityRepository.save(profanity);
-                inserted++;
-            }
-        } catch (IOException e) {
-            log.error("[AdminSupport] CSV 임포트 실패", e);
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "CSV 파일 읽기 실패: " + e.getMessage());
-        }
-
-        String message = String.format("%d건 등록, %d건 중복 건너뜀", inserted, skipped);
-        log.info("[AdminSupport] 비속어 CSV 임포트 완료 — {}", message);
-        return new ProfanityImportResponse(inserted, skipped, message);
-    }
-
-    /** 비속어 전체 목록을 CSV 문자열로 반환 (익스포트용). */
-    public String exportProfanityCsv() {
-        log.debug("[AdminSupport] 비속어 CSV 익스포트");
-        List<SupportProfanity> all = adminProfanityRepository.findAllByOrderByWordAsc();
-        StringBuilder sb = new StringBuilder();
-        sb.append("word,severity,note\n");
-        for (SupportProfanity p : all) {
-            sb.append(escapeCsv(p.getWord())).append(",")
-                    .append(escapeCsv(p.getSeverity())).append(",")
-                    .append(escapeCsv(p.getNote() != null ? p.getNote() : ""))
-                    .append("\n");
-        }
-        return sb.toString();
-    }
+    // 2026-04-08: 비속어 사전(Profanity) 섹션 전체 제거 — 관리자 요청으로 기능 삭제.
+    //             (getProfanities/addProfanity/deleteProfanity/importProfanityCsv/exportProfanityCsv)
 
     // ======================== 헬퍼 ========================
 
@@ -532,28 +497,29 @@ public class AdminSupportService {
         }
     }
 
-    /** CSV 필드 이스케이프 (간단한 구현 — 쉼표/개행 포함 시 쌍따옴표 감쌈) */
-    private String escapeCsv(String value) {
-        if (value == null) {
-            return "";
-        }
-        if (value.contains(",") || value.contains("\n") || value.contains("\"")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
-    }
-
     // ======================== DTO 변환 ========================
 
+    /**
+     * SupportNotice → NoticeResponse 변환.
+     * 2026-04-08: 구 AppNotice 흡수 필드 7종(displayType/linkUrl/imageUrl/startAt/
+     * endAt/priority/isActive) 포함.
+     */
     private NoticeResponse toNoticeResponse(SupportNotice notice) {
         return new NoticeResponse(
                 notice.getNoticeId(),
                 notice.getTitle(),
                 notice.getContent(),
                 notice.getNoticeType(),
+                notice.getDisplayType(),
                 notice.getIsPinned(),
                 notice.getSortOrder(),
                 notice.getPublishedAt(),
+                notice.getLinkUrl(),
+                notice.getImageUrl(),
+                notice.getStartAt(),
+                notice.getEndAt(),
+                notice.getPriority(),
+                notice.getIsActive(),
                 notice.getCreatedAt(),
                 notice.getUpdatedAt()
         );
@@ -607,16 +573,6 @@ public class AdminSupportService {
                 reply.getAuthorType(),
                 reply.getContent(),
                 reply.getCreatedAt()
-        );
-    }
-
-    private ProfanityResponse toProfanityResponse(SupportProfanity profanity) {
-        return new ProfanityResponse(
-                profanity.getProfanityId(),
-                profanity.getWord(),
-                profanity.getSeverity(),
-                profanity.getNote(),
-                profanity.getCreatedAt()
         );
     }
 

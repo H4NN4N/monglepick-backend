@@ -29,6 +29,7 @@
         <result property="marketingAgreed" column="marketing_agreed"/>
         <result property="status" column="status"/>
         <result property="suspendedAt" column="suspended_at"/>
+        <result property="suspendedUntil" column="suspended_until"/>
         <result property="suspendReason" column="suspend_reason"/>
         <result property="isDeleted" column="is_deleted"/>
         <result property="deletedAt" column="deleted_at"/>
@@ -44,7 +45,7 @@
         user_id, email, nickname, password_hash, profile_image,
         provider, provider_id, user_role, user_birth, name,
         required_term, option_term, marketing_agreed,
-        status, suspended_at, suspend_reason,
+        status, suspended_at, suspended_until, suspend_reason,
         is_deleted, deleted_at, last_login_at,
         created_at, updated_at, created_by, updated_by
     </sql>
@@ -186,8 +187,9 @@
             profile_image  = #{profileImage},
             user_role      = #{userRole},
             status         = #{status},
-            suspended_at   = #{suspendedAt},
-            suspend_reason = #{suspendReason},
+            suspended_at    = #{suspendedAt},
+            suspended_until = #{suspendedUntil},
+            suspend_reason  = #{suspendReason},
             is_deleted     = #{isDeleted},
             deleted_at     = #{deletedAt},
             last_login_at  = #{lastLoginAt},
@@ -201,6 +203,25 @@
         UPDATE users
         SET last_login_at = NOW(),
             updated_at    = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+    <!--
+        계정 정지/복구 상태 타깃 UPDATE (관리자 전용).
+
+        기존 update 쿼리는 12개 이상의 컬럼을 한 번에 UPDATE 하므로,
+        엔티티 필드 중 하나라도 문제가 있으면 통째로 실패한다.
+        정지/복구는 status 계열 컬럼만 바꾸면 충분하므로 전용 쿼리로 분리한다.
+
+        파라미터(@Param) 기반으로 바인딩하여 User 엔티티 필드 상태와 무관하게 동작한다.
+    -->
+    <update id="updateSuspensionStatus">
+        UPDATE users
+        SET status          = #{status},
+            suspended_at    = #{suspendedAt},
+            suspended_until = #{suspendedUntil},
+            suspend_reason  = #{suspendReason},
+            updated_at      = NOW()
         WHERE user_id = #{userId}
     </update>
 

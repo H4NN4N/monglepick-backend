@@ -1,10 +1,15 @@
 package com.monglepick.monglepickbackend.admin.controller;
 
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.ActivityResponse;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.GrantAiTokenRequest;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.GrantAiTokenResponse;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.ManualPointAdjustRequest;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.ManualPointResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.PaymentHistoryResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.PointHistoryResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.RoleUpdateRequest;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.SuspendRequest;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.SuspensionHistoryResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.UserDetailResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.UserListResponse;
 import com.monglepick.monglepickbackend.admin.service.AdminUserService;
@@ -13,6 +18,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -22,6 +28,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -188,17 +195,18 @@ public class AdminUserController {
     /**
      * 사용자 계정을 정지한다.
      *
-     * <p>계정 상태를 SUSPENDED로 변경하고 정지 사유와 정지 일시를 기록한다.
-     * 정지된 사용자는 로그인 시 인증 거부된다 (SecurityConfig 연동 필요).</p>
+     * <p>계정 상태를 SUSPENDED로 변경하고 정지 사유·일시를 기록한다.
+     * {@code durationDays}가 양수이면 임시 정지(해당 일수 후 자동 복구 대상),
+     * null이면 영구 정지. 모든 정지/복구는 {@code user_status} INSERT-ONLY 원장에 자동 기록.</p>
      *
      * @param userId  정지할 사용자 ID
-     * @param request 정지 사유 ({@code reason}: 선택 입력, null이면 기본 메시지 적용)
+     * @param request 정지 사유 + 임시 정지 기간
      * @return 성공 메시지 응답
      */
     @Operation(
             summary = "사용자 계정 정지",
             description = "특정 사용자의 계정을 정지(SUSPENDED)한다. " +
-                    "reason 필드는 선택 입력이며, 생략 시 '관리자에 의해 정지되었습니다'가 적용된다."
+                    "reason 생략 시 기본 메시지. durationDays가 양수이면 임시 정지(N일 후 자동 복구 대상), null이면 영구 정지."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "계정 정지 성공"),
@@ -251,6 +259,91 @@ public class AdminUserController {
     // ──────────────────────────────────────────────
     // 이력 조회
     // ──────────────────────────────────────────────
+
+    /**
+     * 사용자의 계정 제재 이력을 조회한다.
+     *
+     * <p>user_status 테이블의 INSERT-ONLY 원장에서 최신순으로 정지/복구 이력을 반환한다.</p>
+     *
+     * @param userId 조회할 사용자 ID
+     * @return 제재 이력 목록 (최신순)
+     */
+    @Operation(
+            summary = "사용자 제재 이력 조회",
+            description = "user_status 테이블에서 특정 사용자의 정지/복구 이력을 최신순으로 반환."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없음")
+    })
+    @GetMapping("/{userId}/suspension-history")
+    public ResponseEntity<ApiResponse<List<SuspensionHistoryResponse>>> getSuspensionHistory(
+            @Parameter(description = "조회할 사용자 ID", example = "user_abc123")
+            @PathVariable String userId
+    ) {
+        log.debug("[AdminUserController] 제재 이력 조회 — userId={}", userId);
+        return ResponseEntity.ok(ApiResponse.ok(adminUserService.getSuspensionHistory(userId)));
+    }
+
+    /**
+     * 관리자 수동 포인트 지급/회수.
+     *
+     * <p>CS 보상, 운영 사고 복구, 프로모션 수동 지급 등에 사용.
+     * 양수=지급(bonus), 음수=회수(revoke). 0이면 400 BAD_REQUEST.
+     * PointsHistory에 INSERT-ONLY 원장으로 자동 기록된다.</p>
+     *
+     * @param userId  대상 사용자 ID
+     * @param request 변동량 + 사유
+     * @return 처리 결과 (변동 전/후 잔액, history ID)
+     */
+    @Operation(
+            summary = "관리자 수동 포인트 조정",
+            description = "amount 양수=지급, 음수=회수, 0=400. " +
+                    "point_type: 양수→bonus, 음수→revoke. " +
+                    "PointsHistory INSERT-ONLY 원장에 자동 기록."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "처리 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "amount=0 또는 잔액 부족"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "사용자 또는 user_points 없음")
+    })
+    @PostMapping("/{userId}/points/adjust")
+    public ResponseEntity<ApiResponse<ManualPointResponse>> adjustUserPoints(
+            @Parameter(description = "대상 사용자 ID", example = "user_abc123")
+            @PathVariable String userId,
+            @Valid @RequestBody ManualPointAdjustRequest request
+    ) {
+        log.info("[AdminUserController] 수동 포인트 조정 요청 — userId={}, amount={}, reason={}",
+                userId, request.amount(), request.reason());
+        return ResponseEntity.ok(ApiResponse.ok(adminUserService.adjustUserPoints(userId, request)));
+    }
+
+    /**
+     * 관리자 수동 AI 이용권(쿠폰) 발급.
+     *
+     * <p>특정 사용자의 {@code user_ai_quota.purchased_ai_tokens}를 지정 수량만큼 증가.
+     * 사과 보상, 마케팅 캠페인, 운영 사고 복구 등에 사용.</p>
+     */
+    @Operation(
+            summary = "관리자 수동 이용권 발급",
+            description = "특정 사용자의 purchased_ai_tokens를 count만큼 증가시킨다. " +
+                    "PointItem 구매 흐름과 동일한 효과. 비관적 락으로 동시성 보호."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "발급 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "count가 1 미만"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "사용자 또는 AI 쿼터 레코드 없음")
+    })
+    @PostMapping("/{userId}/tokens/grant")
+    public ResponseEntity<ApiResponse<GrantAiTokenResponse>> grantAiTokens(
+            @Parameter(description = "대상 사용자 ID", example = "user_abc123")
+            @PathVariable String userId,
+            @Valid @RequestBody GrantAiTokenRequest request
+    ) {
+        log.info("[AdminUserController] 수동 이용권 발급 요청 — userId={}, count={}, reason={}",
+                userId, request.count(), request.reason());
+        return ResponseEntity.ok(ApiResponse.ok(adminUserService.grantAiTokens(userId, request)));
+    }
 
     /**
      * 사용자의 최근 활동 이력을 조회한다.

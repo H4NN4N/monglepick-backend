@@ -1,8 +1,11 @@
 package com.monglepick.monglepickbackend.admin.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+// Jackson 3.x: com.fasterxml.jackson → tools.jackson 패키지 경로 변경 (Spring Boot 4.x)
+// Spring Boot 4.x 자동 등록 ObjectMapper 빈은 tools.jackson.databind.ObjectMapper 이므로
+// 빈 주입 시 반드시 신 패키지를 import 해야 한다 (구 패키지는 NoSuchBeanDefinition 발생).
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import com.monglepick.monglepickbackend.admin.dto.AdminRoadmapCourseDto.CourseResponse;
 import com.monglepick.monglepickbackend.admin.dto.AdminRoadmapCourseDto.CreateCourseRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminRoadmapCourseDto.UpdateActiveRequest;
@@ -210,7 +213,8 @@ public class AdminRoadmapCourseService {
         }
         try {
             return objectMapper.writeValueAsString(movieIds);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
+            // Jackson 3.x: JsonProcessingException → JacksonException 으로 통합 (RuntimeException)
             log.error("movieIds JSON 직렬화 실패: {}", e.getMessage(), e);
             throw new BusinessException(ErrorCode.INVALID_COURSE_MOVIE_IDS);
         }
@@ -227,7 +231,8 @@ public class AdminRoadmapCourseService {
         }
         try {
             return objectMapper.readValue(movieIdsJson, new TypeReference<List<String>>() {});
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
+            // Jackson 3.x: JsonProcessingException → JacksonException 으로 통합 (RuntimeException)
             log.warn("movieIds JSON 파싱 실패 — 빈 리스트 반환: {}", e.getMessage());
             return Collections.emptyList();
         }

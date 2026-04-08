@@ -10,15 +10,16 @@ import java.util.List;
 /**
  * 관리자 AI 운영 API DTO 모음.
  *
- * <p>관리자 페이지 "AI 운영" 탭의 6개 엔드포인트(퀴즈 이력/생성 트리거, 리뷰 이력/생성 트리거,
- * 챗봇 세션 목록/메시지)를 지원한다. 설계서 {@code docs/관리자페이지_설계서.md} §3.2 AI 운영(6 API) 참조.</p>
+ * <p>관리자 페이지 "AI 운영" 탭의 엔드포인트(퀴즈 이력/생성 트리거, 챗봇 세션 목록/메시지)를 지원한다.
+ * 설계서 {@code docs/관리자페이지_설계서.md} §3.2 AI 운영 참조.</p>
  *
  * <h3>포함 DTO 목록</h3>
  * <ul>
  *   <li>퀴즈: {@link QuizSummary}, {@link GenerateQuizRequest}, {@link GenerateQuizResponse}</li>
- *   <li>리뷰: {@link ReviewSummary}, {@link GenerateReviewRequest}, {@link GenerateReviewResponse}</li>
  *   <li>챗봇: {@link ChatSessionSummary}, {@link ChatSessionDetail}</li>
  * </ul>
+ *
+ * <p>2026-04-08: 리뷰 DTO(ReviewSummary/GenerateReviewRequest/GenerateReviewResponse) 제거 — AI 리뷰 생성 기능 삭제.</p>
  */
 public final class AdminAiOpsDto {
 
@@ -111,69 +112,7 @@ public final class AdminAiOpsDto {
             String message
     ) {}
 
-    // ======================== 리뷰 ========================
-
-    /**
-     * 리뷰 목록 요약 응답 DTO (관리자용).
-     *
-     * <p>AI 생성 리뷰 이력은 별도 플래그가 없으므로, 최근 리뷰 전체를 최신순으로 노출한다.
-     * 소프트 삭제된 리뷰는 제외하지 않고 그대로 표시한다 (감사 목적).</p>
-     *
-     * @param reviewId   리뷰 PK
-     * @param userId     작성자 ID (nullable — User LAZY 로딩 접근 실패 시)
-     * @param movieId    영화 ID
-     * @param rating     평점 (1.0 ~ 5.0)
-     * @param content    리뷰 본문
-     * @param isDeleted  소프트 삭제 여부
-     * @param isBlinded  블라인드 여부
-     * @param createdAt  작성 시각
-     */
-    public record ReviewSummary(
-            Long reviewId,
-            String userId,
-            String movieId,
-            Double rating,
-            String content,
-            boolean isDeleted,
-            boolean isBlinded,
-            LocalDateTime createdAt
-    ) {}
-
-    /**
-     * AI 리뷰 생성 트리거 요청 DTO.
-     *
-     * <p>Agent FastAPI 의 리뷰 생성 파이프라인을 트리거하기 위한 파라미터.
-     * 현재는 Agent 쪽 엔드포인트가 미구현이므로 Backend 에서 501 응답을 반환한다.</p>
-     *
-     * @param movieId 대상 영화 ID (필수)
-     * @param style   리뷰 스타일 ("critical" / "enthusiastic" / "neutral" 등, nullable)
-     * @param length  리뷰 길이 ("short" / "medium" / "long", nullable)
-     */
-    public record GenerateReviewRequest(
-            @NotBlank(message = "영화 ID는 필수입니다.")
-            @Size(max = 50, message = "영화 ID는 최대 50자입니다.")
-            String movieId,
-
-            @Size(max = 30, message = "스타일 코드는 최대 30자입니다.")
-            String style,
-
-            @Size(max = 10, message = "길이 코드는 최대 10자입니다.")
-            String length
-    ) {}
-
-    /**
-     * AI 리뷰 생성 응답 DTO.
-     *
-     * <p>현재 구현에서는 항상 success=false 와 안내 메시지를 반환한다.
-     * Agent 쪽 엔드포인트가 추가되면 실제 생성된 리뷰 ID 를 담도록 확장한다.</p>
-     *
-     * @param success 생성 성공 여부
-     * @param message 처리 결과 안내 메시지
-     */
-    public record GenerateReviewResponse(
-            boolean success,
-            String message
-    ) {}
+    // 2026-04-08: 리뷰 섹션(ReviewSummary/GenerateReviewRequest/GenerateReviewResponse) 제거 — AI 리뷰 생성 기능 삭제
 
     // ======================== 챗봇 세션 ========================
 

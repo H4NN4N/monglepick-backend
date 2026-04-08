@@ -18,8 +18,9 @@ import com.monglepick.monglepickbackend.domain.review.mapper.ReviewMapper;
 import com.monglepick.monglepickbackend.domain.search.repository.SearchHistoryRepository;
 import com.monglepick.monglepickbackend.domain.user.entity.User;
 import com.monglepick.monglepickbackend.domain.user.mapper.UserMapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+// Jackson 3.x: com.fasterxml.jackson → tools.jackson 패키지 경로 변경 (Spring Boot 4.x)
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -427,9 +428,8 @@ public class AdminStatsService {
             try {
                 JsonNode root = STATS_OBJECT_MAPPER.readTree(affinityJson);
                 if (root.isObject()) {
-                    var iter = root.fields();
-                    while (iter.hasNext()) {
-                        var entry = iter.next();
+                    // Jackson 3.x: JsonNode.fields() Iterator → properties() Set<Map.Entry> 로 API 변경
+                    for (var entry : root.properties()) {
                         String genre = entry.getKey().trim();
                         double score = entry.getValue().asDouble(0.0);
                         if (genre.isEmpty() || score <= 0.0) {

@@ -54,6 +54,28 @@ public interface UserMapper {
     /** 최종 로그인 시각 갱신 (단건 UPDATE — 전체 UPDATE 오버헤드 회피) */
     void updateLastLoginAt(@Param("userId") String userId);
 
+    /**
+     * 계정 정지/복구 상태만 단건 UPDATE (관리자 전용).
+     *
+     * <p>기존 {@link #update(User)}는 12개 이상의 필드를 일괄 UPDATE 하므로
+     * 엔티티 필드 중 하나라도 null/타입 불일치가 발생하면 통째로 실패한다.
+     * 정지/복구는 status 계열 필드만 바꾸면 충분하므로 타깃 UPDATE 로 분리한다.</p>
+     *
+     * <p>영향 행 수를 반환하여 Service 레이어에서 정상 반영 여부를 검증할 수 있다.</p>
+     *
+     * @param userId         대상 사용자 PK
+     * @param status         변경할 상태 (ACTIVE/SUSPENDED/LOCKED) — enum.name() 문자열로 저장
+     * @param suspendedAt    정지 시각 (복구 시 null)
+     * @param suspendedUntil 정지 해제 예정 시각 (영구 정지 또는 복구 시 null)
+     * @param suspendReason  정지 사유 (복구 시 null)
+     * @return 영향 행 수 (1 정상, 0 이면 userId 미매칭)
+     */
+    int updateSuspensionStatus(@Param("userId") String userId,
+                                @Param("status") String status,
+                                @Param("suspendedAt") LocalDateTime suspendedAt,
+                                @Param("suspendedUntil") LocalDateTime suspendedUntil,
+                                @Param("suspendReason") String suspendReason);
+
     // ═══ 통계/집계 (관리자 통계/대시보드용) ═══
 
     /** 전체 사용자 수 (탈퇴 포함) */

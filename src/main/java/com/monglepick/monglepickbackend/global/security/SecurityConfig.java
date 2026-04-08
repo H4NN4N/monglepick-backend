@@ -332,6 +332,9 @@ public class SecurityConfig {
                 /* 영화 조회 — 비로그인 허용 (상세, TMDB, 인기) */
                 .requestMatchers(HttpMethod.GET, "/api/v1/movies/**").permitAll()
 
+                /* 앱 메인 공지 조회 — 비로그인 허용 (사용자 홈 배너/팝업/모달) */
+                .requestMatchers(HttpMethod.GET, "/api/v1/notices/**").permitAll()
+
                 /* 나머지 모든 요청: 인증 필요 */
                 .anyRequest().authenticated()
             )

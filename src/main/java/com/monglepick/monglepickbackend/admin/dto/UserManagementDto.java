@@ -118,12 +118,96 @@ public class UserManagementDto {
     /**
      * 계정 정지 요청 DTO.
      *
-     * <p>관리자가 사용자 계정을 정지할 때 정지 사유를 함께 전달한다.
-     * reason은 선택 입력이며, 없으면 null로 처리한다.</p>
+     * <p>관리자가 사용자 계정을 정지할 때 정지 사유 및 임시 정지 기간을 함께 전달한다.
+     * {@code reason}은 선택 입력이며, 없으면 기본 메시지가 적용된다.
+     * {@code durationDays}가 null이면 영구 정지, 양수이면 해당 일수 후 자동 복구 대상.</p>
      *
-     * @param reason 정지 사유 (null 허용, 최대 500자)
+     * @param reason       정지 사유 (null 허용, 최대 500자)
+     * @param durationDays 임시 정지 일수 (null=영구, 1 이상 정수)
      */
     public record SuspendRequest(
+            String reason,
+            Integer durationDays
+    ) {}
+
+    /**
+     * 계정 제재 이력 단일 항목 응답 DTO (user_status 테이블 기반).
+     */
+    public record SuspensionHistoryResponse(
+            Long userStatusId,
+            String status,
+            java.time.LocalDateTime suspendedAt,
+            java.time.LocalDateTime suspendedUntil,
+            String suspendReason,
+            String suspendedBy,
+            java.time.LocalDateTime createdAt
+    ) {}
+
+    /**
+     * 관리자 수동 포인트 지급/회수 요청 DTO.
+     *
+     * <p>{@code amount} 양수: 지급(획득, point_type='bonus'),
+     * 음수: 회수(차감, point_type='revoke'), 0: 400 실패.</p>
+     *
+     * <p>{@code reason}은 PointsHistory.description에 기록되어 관리자 감사 로그로 남는다.
+     * CS 보상 처리, 운영 사고 복구, 프로모션 수동 지급 등에 활용.</p>
+     *
+     * @param amount 변동량 (양수=지급, 음수=회수, 0 금지)
+     * @param reason 지급/회수 사유 (필수, 최대 300자)
+     */
+    public record ManualPointAdjustRequest(
+            @jakarta.validation.constraints.NotNull(message = "amount는 필수입니다.")
+            Integer amount,
+            @jakarta.validation.constraints.NotBlank(message = "사유는 필수입니다.")
+            @jakarta.validation.constraints.Size(max = 300, message = "사유는 300자 이하여야 합니다.")
+            String reason
+    ) {}
+
+    /**
+     * 관리자 수동 포인트 처리 결과 응답 DTO.
+     */
+    public record ManualPointResponse(
+            String userId,
+            Integer deltaApplied,
+            Integer balanceBefore,
+            Integer balanceAfter,
+            String pointType,
+            String reason,
+            Long historyId
+    ) {}
+
+    /**
+     * 관리자 수동 AI 이용권(쿠폰) 발급 요청 DTO.
+     *
+     * <p>특정 사용자의 {@code user_ai_quota.purchased_ai_tokens}를 지정 수량만큼 증가시킨다.
+     * 사과 보상, 마케팅 캠페인, 운영 사고 복구 등에 사용.</p>
+     *
+     * @param count  발급할 이용권 수 (1 이상 정수, 필수)
+     * @param reason 발급 사유 (필수, 최대 300자)
+     */
+    public record GrantAiTokenRequest(
+            @jakarta.validation.constraints.NotNull(message = "count는 필수입니다.")
+            @jakarta.validation.constraints.Min(value = 1, message = "최소 1장 이상 발급해야 합니다.")
+            Integer count,
+            @jakarta.validation.constraints.NotBlank(message = "사유는 필수입니다.")
+            @jakarta.validation.constraints.Size(max = 300, message = "사유는 300자 이하여야 합니다.")
+            String reason
+    ) {}
+
+    /**
+     * 관리자 수동 이용권 발급 응답 DTO.
+     *
+     * @param userId           대상 사용자 ID
+     * @param grantedCount     발급된 이용권 수
+     * @param tokensBefore     발급 전 purchased_ai_tokens
+     * @param tokensAfter      발급 후 purchased_ai_tokens
+     * @param reason           발급 사유
+     */
+    public record GrantAiTokenResponse(
+            String userId,
+            Integer grantedCount,
+            Integer tokensBefore,
+            Integer tokensAfter,
             String reason
     ) {}
 

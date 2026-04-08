@@ -1,20 +1,28 @@
 package com.monglepick.monglepickbackend.admin.service;
 
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.ActivityResponse;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.GrantAiTokenRequest;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.GrantAiTokenResponse;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.ManualPointAdjustRequest;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.ManualPointResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.PaymentHistoryResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.PointHistoryResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.RoleUpdateRequest;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.SuspendRequest;
+import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.SuspensionHistoryResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.UserDetailResponse;
 import com.monglepick.monglepickbackend.admin.dto.UserManagementDto.UserListResponse;
 import com.monglepick.monglepickbackend.admin.mapper.AdminUserMapper;
+import com.monglepick.monglepickbackend.admin.repository.AdminUserStatusRepository;
 import com.monglepick.monglepickbackend.domain.community.entity.PostComment;
 import com.monglepick.monglepickbackend.domain.community.mapper.PostMapper;
 import com.monglepick.monglepickbackend.domain.payment.entity.PaymentOrder;
 import com.monglepick.monglepickbackend.domain.payment.repository.PaymentOrderRepository;
 import com.monglepick.monglepickbackend.domain.reward.entity.PointsHistory;
+import com.monglepick.monglepickbackend.domain.reward.entity.UserAiQuota;
 import com.monglepick.monglepickbackend.domain.reward.entity.UserPoint;
 import com.monglepick.monglepickbackend.domain.reward.repository.PointsHistoryRepository;
+import com.monglepick.monglepickbackend.domain.reward.repository.UserAiQuotaRepository;
 import com.monglepick.monglepickbackend.domain.reward.repository.UserPointRepository;
 import com.monglepick.monglepickbackend.domain.review.mapper.ReviewMapper;
 import com.monglepick.monglepickbackend.domain.user.entity.User;
@@ -79,6 +87,17 @@ public class AdminUserService {
 
     /** 리뷰 수 카운트/활동 조회 — MyBatis Mapper (§15) */
     private final ReviewMapper reviewMapper;
+
+    /**
+     * 사용자 제재 이력(user_status) JPA 리포지토리.
+     *
+     * <p>계정 정지/복구 이력을 INSERT-ONLY 원장으로 기록한다.
+     * UserStatus 엔티티는 김민규 user 도메인이지만, admin 이력 기록은 별도 관리.</p>
+     */
+    private final AdminUserStatusRepository adminUserStatusRepository;
+
+    /** AI 쿼터(이용권) 레포지토리 — 관리자 수동 이용권 발급에서 사용 */
+    private final UserAiQuotaRepository userAiQuotaRepository;
 
     // ──────────────────────────────────────────────
     // 조회 메서드 (readOnly = true 상속)
@@ -270,16 +289,57 @@ public class AdminUserService {
     public void suspendUser(String userId, SuspendRequest request) {
         User user = findActiveUser(userId);
 
-        // User 엔티티의 도메인 메서드 suspend() 호출 — status, suspendedAt, suspendReason 갱신
+        // 사유 결정 — 없으면 기본 메시지
         String reason = (request != null && StringUtils.hasText(request.reason()))
                 ? request.reason()
                 : "관리자에 의해 정지되었습니다";
-        user.suspend(reason);
 
-        // MyBatis는 dirty checking 미지원 — 명시적으로 UPDATE 호출 (§15)
-        userMapper.update(user);
+        // 임시 정지 기간(durationDays) 처리 — null/0 이하면 영구 정지
+        Integer days = (request != null) ? request.durationDays() : null;
+        java.time.LocalDateTime suspendedUntil = null;
+        if (days != null && days > 0) {
+            suspendedUntil = java.time.LocalDateTime.now().plusDays(days);
+            user.suspendUntil(reason, suspendedUntil);
+        } else {
+            user.suspend(reason);
+        }
 
-        log.info("[AdminUserService] 계정 정지 — userId={}, reason={}", userId, reason);
+        /*
+         * 정지 상태만 단건 UPDATE — 2026-04-08 버그 수정.
+         * 기존 userMapper.update(user) 경로는 12개 컬럼을 일괄 UPDATE 하는데,
+         * 일부 환경에서 실제 SQL 이 날아가지 않는 현상이 보고되어(화면에는 정지 반영,
+         * DB 는 그대로) 전용 쿼리 updateSuspensionStatus 로 교체한다.
+         * 반환값(영향 행 수)이 0 이면 명시적으로 예외를 던져 실패를 가시화한다.
+         */
+        int affected = userMapper.updateSuspensionStatus(
+                userId,
+                User.UserStatus.SUSPENDED.name(),
+                user.getSuspendedAt(),
+                suspendedUntil,
+                reason
+        );
+        if (affected == 0) {
+            log.error("[AdminUserService] 계정 정지 UPDATE 실패 — userId={} (영향 행 0)", userId);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "계정 정지 처리 중 DB 갱신에 실패했습니다: " + userId);
+        }
+
+        // user_status 이력 테이블에 정지 레코드 INSERT-ONLY 기록
+        String adminId = resolveCurrentAdminId();
+        com.monglepick.monglepickbackend.domain.user.entity.UserStatus statusHistory =
+                com.monglepick.monglepickbackend.domain.user.entity.UserStatus.builder()
+                        .userId(userId)
+                        .status(com.monglepick.monglepickbackend.domain.user.entity.UserStatus
+                                .AccountStatus.SUSPENDED)
+                        .suspendedAt(user.getSuspendedAt())
+                        .suspendedUntil(suspendedUntil)
+                        .suspendReason(reason)
+                        .suspendedBy(adminId)
+                        .build();
+        adminUserStatusRepository.save(statusHistory);
+
+        log.info("[AdminUserService] 계정 정지 — userId={}, reason={}, until={}, adminId={}",
+                userId, reason, suspendedUntil, adminId);
     }
 
     /**
@@ -305,13 +365,213 @@ public class AdminUserService {
                     "이미 탈퇴한 사용자입니다. 복구가 불가능합니다: " + userId);
         }
 
-        // User 엔티티의 도메인 메서드 activate() 호출 — status=ACTIVE, suspendedAt/suspendReason 초기화
+        // User 엔티티의 도메인 메서드 activate() 호출 — status=ACTIVE, suspendedAt/until/reason 초기화
         user.activate();
 
-        // MyBatis는 dirty checking 미지원 — 명시적으로 UPDATE 호출 (§15)
-        userMapper.update(user);
+        /*
+         * 복구 상태만 단건 UPDATE — suspendUser 와 동일한 이유로 전용 쿼리 사용 (2026-04-08).
+         * ACTIVE 로 전환하면서 suspendedAt/suspendedUntil/suspendReason 을 모두 null 로 초기화한다.
+         */
+        int activated = userMapper.updateSuspensionStatus(
+                userId,
+                User.UserStatus.ACTIVE.name(),
+                null,
+                null,
+                null
+        );
+        if (activated == 0) {
+            log.error("[AdminUserService] 계정 복구 UPDATE 실패 — userId={} (영향 행 0)", userId);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "계정 복구 처리 중 DB 갱신에 실패했습니다: " + userId);
+        }
 
-        log.info("[AdminUserService] 계정 복구 — userId={}", userId);
+        // user_status 이력 테이블에 복구 레코드 INSERT-ONLY 기록
+        String adminId = resolveCurrentAdminId();
+        com.monglepick.monglepickbackend.domain.user.entity.UserStatus activateHistory =
+                com.monglepick.monglepickbackend.domain.user.entity.UserStatus.builder()
+                        .userId(userId)
+                        .status(com.monglepick.monglepickbackend.domain.user.entity.UserStatus
+                                .AccountStatus.ACTIVE)
+                        .suspendedAt(null)
+                        .suspendedUntil(null)
+                        .suspendReason("관리자 계정 복구")
+                        .suspendedBy(adminId)
+                        .build();
+        adminUserStatusRepository.save(activateHistory);
+
+        log.info("[AdminUserService] 계정 복구 — userId={}, adminId={}", userId, adminId);
+    }
+
+    /**
+     * 관리자 수동 포인트 지급/회수.
+     *
+     * <p>양수: 지급(보너스), 음수: 회수. 0은 400 BAD_REQUEST.
+     * PointsHistory에 INSERT-ONLY 원장으로 기록되며, user_points 잔액도 동시 갱신.
+     * 회수 시 잔액 부족이면 400 에러.</p>
+     *
+     * <h4>기록 형식</h4>
+     * <ul>
+     *   <li>point_type: 양수이면 "bonus", 음수이면 "revoke"</li>
+     *   <li>description: "[관리자 수동] " + request.reason()</li>
+     *   <li>action_type: "ADMIN_MANUAL_ADJUST"</li>
+     *   <li>reference_id: "admin_" + 현재 관리자 ID + "_" + System.currentTimeMillis()</li>
+     * </ul>
+     *
+     * @param userId  대상 사용자 ID
+     * @param request 변동량 + 사유
+     * @return 처리 결과 (변동 전/후 잔액, history ID 등)
+     * @throws BusinessException USER_NOT_FOUND / INVALID_INPUT (amount=0) / INSUFFICIENT_POINTS
+     */
+    @Transactional
+    public ManualPointResponse adjustUserPoints(String userId, ManualPointAdjustRequest request) {
+        // 사용자 존재 검증 (탈퇴 제외)
+        findActiveUser(userId);
+
+        int delta = request.amount();
+        if (delta == 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "변동량(amount)은 0이 될 수 없습니다");
+        }
+
+        // user_points 조회 — 비관적 쓰기 락으로 동시성 보호 (중복 조정 방지)
+        UserPoint userPoint = userPointRepository.findByUserIdForUpdate(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND,
+                        "사용자 포인트 레코드가 없습니다: " + userId));
+
+        int balanceBefore = userPoint.getBalance();
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        // 잔액 계산 + 도메인 메서드 호출
+        if (delta > 0) {
+            // 지급 — 활동 리워드 아님(isActivityReward=false) → earnedByActivity 미반영
+            userPoint.addPoints(delta, today, false);
+        } else {
+            int toDeduct = -delta;
+            if (balanceBefore < toDeduct) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "잔액 부족 — 회수 요청량=" + toDeduct + ", 현재 잔액=" + balanceBefore);
+            }
+            userPoint.deductPoints(toDeduct);
+        }
+        userPointRepository.save(userPoint);
+
+        int balanceAfter = userPoint.getBalance();
+        String pointType = (delta > 0) ? "bonus" : "revoke";
+        String adminId = resolveCurrentAdminId();
+        String referenceId = "admin_" + adminId + "_" + System.currentTimeMillis();
+        String description = "[관리자 수동] " + request.reason();
+
+        // PointsHistory INSERT-ONLY
+        PointsHistory history = PointsHistory.builder()
+                .userId(userId)
+                .pointChange(delta)
+                .pointAfter(balanceAfter)
+                .pointType(pointType)
+                .description(description)
+                .referenceId(referenceId)
+                .actionType("ADMIN_MANUAL_ADJUST")
+                .baseAmount(null)
+                .appliedMultiplier(null)
+                .build();
+        PointsHistory savedHistory = pointsHistoryRepository.save(history);
+
+        log.info("[AdminUserService] 수동 포인트 조정 — userId={}, delta={}, before={}, after={}, adminId={}",
+                userId, delta, balanceBefore, balanceAfter, adminId);
+
+        return new ManualPointResponse(
+                userId,
+                delta,
+                balanceBefore,
+                balanceAfter,
+                pointType,
+                request.reason(),
+                savedHistory.getPointsHistoryId()
+        );
+    }
+
+    /**
+     * 관리자 수동 AI 이용권(쿠폰) 발급.
+     *
+     * <p>특정 사용자의 {@code user_ai_quota.purchased_ai_tokens}를 지정 수량만큼 증가시킨다.
+     * 사과 보상, 마케팅 캠페인, 운영 사고 복구 등에 사용.</p>
+     *
+     * <p>비관적 락({@code findByUserIdWithLock})으로 동시성 보호.
+     * AI 쿼터는 포인트가 아니므로 PointsHistory에 기록하지 않는다 (별도 도메인).</p>
+     *
+     * @param userId  대상 사용자 ID
+     * @param request 발급 수량 + 사유
+     * @return 발급 결과 (변동 전/후 이용권 수)
+     * @throws BusinessException USER_NOT_FOUND — 사용자/쿼터 레코드 없음
+     */
+    @Transactional
+    public GrantAiTokenResponse grantAiTokens(String userId, GrantAiTokenRequest request) {
+        // 사용자 존재 검증 (탈퇴 제외)
+        findActiveUser(userId);
+
+        // user_ai_quota 비관적 락 조회 — 동시 발급 중복 방지
+        UserAiQuota quota = userAiQuotaRepository.findByUserIdWithLock(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND,
+                        "사용자 AI 쿼터 레코드가 없습니다: " + userId));
+
+        int tokensBefore = quota.getPurchasedAiTokens() != null ? quota.getPurchasedAiTokens() : 0;
+        quota.addPurchasedTokens(request.count());
+        userAiQuotaRepository.save(quota);
+
+        int tokensAfter = quota.getPurchasedAiTokens();
+        String adminId = resolveCurrentAdminId();
+
+        log.info("[AdminUserService] 수동 이용권 발급 — userId={}, count={}, before={}, after={}, reason={}, adminId={}",
+                userId, request.count(), tokensBefore, tokensAfter, request.reason(), adminId);
+
+        return new GrantAiTokenResponse(
+                userId,
+                request.count(),
+                tokensBefore,
+                tokensAfter,
+                request.reason()
+        );
+    }
+
+    /**
+     * 특정 사용자의 제재 이력을 최신순으로 조회한다.
+     *
+     * <p>user_status 테이블은 정지/복구 이력을 INSERT-ONLY 원장으로 보관한다.
+     * 관리자 화면에서 제재 이력 패널에 표시할 때 사용.</p>
+     *
+     * @param userId 조회 대상 사용자 ID
+     * @return 제재 이력 응답 DTO 목록 (createdAt DESC)
+     */
+    public List<SuspensionHistoryResponse> getSuspensionHistory(String userId) {
+        // 사용자 존재 검증
+        findActiveUser(userId);
+
+        return adminUserStatusRepository.findByUserIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(h -> new SuspensionHistoryResponse(
+                        h.getUserStatusId(),
+                        h.getStatus() != null ? h.getStatus().name() : null,
+                        h.getSuspendedAt(),
+                        h.getSuspendedUntil(),
+                        h.getSuspendReason(),
+                        h.getSuspendedBy(),
+                        h.getCreatedAt()
+                ))
+                .toList();
+    }
+
+    /**
+     * SecurityContextHolder에서 현재 관리자 ID 추출 (이력 기록용).
+     *
+     * <p>인증 정보가 없으면 "SYSTEM"을 반환한다.</p>
+     */
+    private String resolveCurrentAdminId() {
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder
+                        .getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
+            return "SYSTEM";
+        }
+        return auth.getName();
     }
 
     // ──────────────────────────────────────────────

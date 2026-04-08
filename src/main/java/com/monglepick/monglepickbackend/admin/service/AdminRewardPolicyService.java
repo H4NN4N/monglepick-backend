@@ -1,7 +1,10 @@
 package com.monglepick.monglepickbackend.admin.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+// Jackson 3.x: com.fasterxml.jackson → tools.jackson 패키지 경로 변경 (Spring Boot 4.x)
+// Spring Boot 4.x 자동 등록 ObjectMapper 빈은 tools.jackson.databind.ObjectMapper 이므로
+// 빈 주입 시 반드시 신 패키지를 import 해야 한다 (구 패키지는 NoSuchBeanDefinition 발생).
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.monglepick.monglepickbackend.admin.dto.AdminRewardPolicyDto.CreateRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminRewardPolicyDto.HistoryResponse;
 import com.monglepick.monglepickbackend.admin.dto.AdminRewardPolicyDto.PolicyResponse;
@@ -222,7 +225,8 @@ public class AdminRewardPolicyService {
                     .build();
 
             historyRepository.save(history);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
+            // Jackson 3.x: JsonProcessingException → JacksonException 으로 통합 (RuntimeException)
             log.error("[관리자] 리워드 정책 변경 이력 직렬화 실패 — policyId={}, error={}",
                     policyId, e.getMessage(), e);
             // 이력 기록 실패는 정책 저장을 막지 않는다 (best effort)

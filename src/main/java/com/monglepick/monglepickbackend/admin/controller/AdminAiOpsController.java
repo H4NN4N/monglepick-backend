@@ -4,10 +4,7 @@ import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.ChatSessionDetai
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.ChatSessionSummary;
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateQuizRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateQuizResponse;
-import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateReviewRequest;
-import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateReviewResponse;
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.QuizSummary;
-import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.ReviewSummary;
 import com.monglepick.monglepickbackend.admin.service.AdminAiOpsService;
 import com.monglepick.monglepickbackend.global.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,15 +32,15 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>관리자 페이지 "AI 운영" 탭의 6개 엔드포인트를 제공한다.
  * 설계서 {@code docs/관리자페이지_설계서.md} §3.2 AI 운영(6 API) 범위.</p>
  *
- * <h3>담당 엔드포인트 (6개)</h3>
+ * <h3>담당 엔드포인트 (4개)</h3>
  * <ul>
  *   <li>퀴즈 이력: GET /admin/ai/quiz/history</li>
  *   <li>퀴즈 생성 트리거: POST /admin/ai/quiz/generate</li>
- *   <li>리뷰 이력: GET /admin/ai/review/history</li>
- *   <li>리뷰 생성 트리거: POST /admin/ai/review/generate</li>
  *   <li>챗봇 세션 목록: GET /admin/ai/chatbot/sessions</li>
  *   <li>챗봇 세션 메시지: GET /admin/ai/chatbot/sessions/{sessionId}/messages</li>
  * </ul>
+ *
+ * <p>2026-04-08: AI 리뷰 생성/이력 기능 제거 (ai_generated 플래그 부재로 의미 없음).</p>
  *
  * <h3>인증</h3>
  * <p>모든 엔드포인트는 ADMIN 권한이 필요하다.</p>
@@ -103,48 +100,6 @@ public class AdminAiOpsController {
         log.info("[AdminAiOps] 퀴즈 생성 요청 — movieId={}", request.movieId());
         GenerateQuizResponse result = adminAiOpsService.generateQuiz(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.created(result));
-    }
-
-    // ======================== 리뷰 ========================
-
-    /**
-     * AI 리뷰 이력을 페이징 조회한다.
-     *
-     * <p>현재는 AI 생성 플래그가 없어 전체 리뷰 최신순으로 반환한다.</p>
-     *
-     * @param pageable 페이지 정보
-     * @return 리뷰 요약 페이지
-     */
-    @Operation(
-            summary = "AI 리뷰 이력 조회",
-            description = "AI가 생성한 리뷰 이력을 페이징 조회한다. 현재는 ai_generated 플래그가 없어 전체 리뷰 최신순으로 반환한다."
-    )
-    @GetMapping("/review/history")
-    public ResponseEntity<ApiResponse<Page<ReviewSummary>>> getReviewHistory(
-            @PageableDefault(size = 20) Pageable pageable
-    ) {
-        log.debug("[AdminAiOps] 리뷰 이력 조회 요청 — page={}", pageable.getPageNumber());
-        Page<ReviewSummary> result = adminAiOpsService.getReviewHistory(pageable);
-        return ResponseEntity.ok(ApiResponse.ok(result));
-    }
-
-    /**
-     * AI 리뷰 생성을 트리거한다 (현재 미구현).
-     *
-     * @param request 생성 요청 DTO
-     * @return 생성 결과 응답 DTO (success=false)
-     */
-    @Operation(
-            summary = "AI 리뷰 생성 트리거",
-            description = "AI 리뷰 생성을 요청한다. 현재 Agent 쪽 엔드포인트가 미구현이므로 안내 메시지만 반환한다."
-    )
-    @PostMapping("/review/generate")
-    public ResponseEntity<ApiResponse<GenerateReviewResponse>> generateReview(
-            @RequestBody @Valid GenerateReviewRequest request
-    ) {
-        log.info("[AdminAiOps] 리뷰 생성 요청 — movieId={}", request.movieId());
-        GenerateReviewResponse result = adminAiOpsService.generateReview(request);
-        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
     // ======================== 챗봇 세션 ========================

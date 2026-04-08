@@ -244,6 +244,11 @@ public enum ErrorCode {
     /** 관리자 — action_type 중복 등록 시도. */
     DUPLICATE_REWARD_POLICY(HttpStatus.CONFLICT, "RWP002", "이미 등록된 활동 코드입니다"),
 
+    /** 관리자 — 공지 시작일/종료일 유효성 위반 (BANNER/POPUP/MODAL 노출 기간). */
+    INVALID_NOTICE_PERIOD(HttpStatus.BAD_REQUEST, "NOT002", "공지 종료일은 시작일 이후여야 합니다"),
+    // 2026-04-08: APP_NOTICE_NOT_FOUND 제거 — AppNotice 엔티티 폐기로 SupportNotice에 통합.
+    //             공지 단건 조회 실패 시에는 INVALID_INPUT(공통 예외)을 사용한다.
+
     // ─────────────────────────────────────────────
     // 위시리스트 (WISH0xx)
     // ─────────────────────────────────────────────

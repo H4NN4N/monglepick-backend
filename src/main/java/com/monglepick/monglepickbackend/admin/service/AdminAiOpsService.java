@@ -4,48 +4,33 @@ import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.ChatSessionDetai
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.ChatSessionSummary;
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateQuizRequest;
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateQuizResponse;
-import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateReviewRequest;
-import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.GenerateReviewResponse;
 import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.QuizSummary;
-import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.ReviewSummary;
 import com.monglepick.monglepickbackend.admin.repository.AdminChatSessionRepository;
 import com.monglepick.monglepickbackend.admin.repository.AdminQuizRepository;
-import com.monglepick.monglepickbackend.domain.review.mapper.ReviewMapper;
 import com.monglepick.monglepickbackend.domain.chat.entity.ChatSessionArchive;
-import com.monglepick.monglepickbackend.domain.review.entity.Review;
 import com.monglepick.monglepickbackend.domain.roadmap.entity.Quiz;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClient;
-
-import java.time.Duration;
-import java.util.Map;
 
 /**
  * 관리자 AI 운영 서비스.
  *
- * <p>관리자 페이지 "AI 운영" 탭의 6개 기능에 대한 비즈니스 로직을 담당한다.
- * 설계서 {@code docs/관리자페이지_설계서.md} §3.2 AI 운영(6 API) 범위.</p>
+ * <p>관리자 페이지 "AI 운영" 탭의 비즈니스 로직을 담당한다.
+ * 설계서 {@code docs/관리자페이지_설계서.md} §3.2 AI 운영 범위.</p>
  *
- * <h3>담당 기능</h3>
+ * <h3>담당 기능 (4개)</h3>
  * <ul>
  *   <li>퀴즈: 이력 조회 / 생성 트리거 (2)</li>
- *   <li>리뷰: 이력 조회 / 생성 트리거 (2)</li>
  *   <li>챗봇: 세션 목록 / 세션 메시지 (2)</li>
  * </ul>
  *
- * <h3>Agent 연동 상태</h3>
- * <p>현재 Agent FastAPI 에는 AI 퀴즈/리뷰 "전용 admin 생성 엔드포인트"가 없으므로,
- * 퀴즈 생성은 관리자가 직접 입력한 내용을 PENDING 상태로 INSERT 하는 폴백 경로를 사용하고,
- * 리뷰 생성은 501(NOT_IMPLEMENTED) 안내 응답을 반환한다.
- * 향후 Agent 쪽 엔드포인트가 추가되면 HTTP 호출로 전환한다 (TODO 주석 참조).</p>
+ * <p>2026-04-08: AI 리뷰 생성/이력 기능 제거 (ai_generated 플래그 부재로 의미 없음).</p>
  */
 @Slf4j
 @Service
@@ -56,26 +41,9 @@ public class AdminAiOpsService {
     /** 관리자 전용 퀴즈 리포지토리 — 페이징 + 상태 필터 */
     private final AdminQuizRepository adminQuizRepository;
 
-    /** 관리자 전용 리뷰 리포지토리 — 동적 필터 (재사용) */
-    /** 리뷰 통합 Mapper — AdminReviewRepository 폐기 (§15) */
-    private final ReviewMapper reviewMapper;
-
     /** 관리자 전용 채팅 세션 리포지토리 */
     private final AdminChatSessionRepository adminChatSessionRepository;
-
-    /** Phase 7 (2026-04-08): Agent 베이스 URL — AI 리뷰 생성 트리거 시 사용 */
-    @Value("${admin.health.agent-url:http://localhost:8000}")
-    private String agentUrl;
-
-    /** Phase 7: Agent 호출용 RestClient (싱글턴) — 타임아웃 60초 (LLM 응답 대기) */
-    private final RestClient agentRestClient = RestClient.builder()
-            .requestFactory(
-                    new org.springframework.http.client.SimpleClientHttpRequestFactory() {{
-                        setConnectTimeout((int) Duration.ofSeconds(5).toMillis());
-                        setReadTimeout((int) Duration.ofSeconds(60).toMillis());
-                    }}
-            )
-            .build();
+    // 2026-04-08: reviewMapper / agentRestClient / agentUrl 제거 — AI 리뷰 생성 기능 삭제
 
     // ======================== 퀴즈 ========================
 
@@ -147,99 +115,8 @@ public class AdminAiOpsService {
         );
     }
 
-    // ======================== 리뷰 ========================
-
-    /**
-     * 리뷰 이력을 최신순으로 페이징 조회한다.
-     *
-     * <p>현재 AI 생성 리뷰를 식별하는 플래그가 없으므로, 전체 리뷰 최신순으로 반환한다.
-     * 향후 {@code reviews.is_ai_generated} 컬럼이 추가되면 해당 필터를 적용한다.</p>
-     *
-     * @param pageable 페이지 정보
-     * @return 리뷰 요약 페이지
-     */
-    public Page<ReviewSummary> getReviewHistory(Pageable pageable) {
-        log.debug("[AdminAiOps] 리뷰 이력 조회 — page={}", pageable.getPageNumber());
-
-        int offset = (int) pageable.getOffset();
-        int limit  = pageable.getPageSize();
-
-        // 전체 리뷰 최신순 — MyBatis (§15)
-        java.util.List<Review> reviews = reviewMapper.findAllAdminReviews(offset, limit);
-        long total = reviewMapper.count();
-
-        java.util.List<ReviewSummary> content = reviews.stream()
-                .map(this::toReviewSummary)
-                .toList();
-
-        return new org.springframework.data.domain.PageImpl<>(content, pageable, total);
-    }
-
-    /**
-     * AI 리뷰 생성 트리거 (Phase 7 — 2026-04-08).
-     *
-     * <p>Agent FastAPI 의 {@code POST /api/v1/admin/ai/review/generate} 를 RestClient 로 호출하여
-     * Explanation LLM 기반 리뷰 초안을 생성한다. 생성된 텍스트는 응답 메시지에 포함되며,
-     * 실제 reviews 테이블 INSERT 는 관리자가 별도로 수행한다 (검수 후 게시 워크플로우).</p>
-     *
-     * <h4>요청 페이로드 (Agent)</h4>
-     * <pre>{
-     *   "movie_id": "...",
-     *   "style": "neutral|critical|enthusiastic",
-     *   "length": "short|medium|long"
-     * }</pre>
-     *
-     * <h4>응답 페이로드</h4>
-     * <pre>{ success, movie_id, review_text, word_count, style, length, message }</pre>
-     *
-     * @param request 생성 요청 DTO
-     * @return 생성 결과 응답 DTO (success=true 시 message 에 리뷰 텍스트 포함)
-     */
-    public GenerateReviewResponse generateReview(GenerateReviewRequest request) {
-        log.info("[AdminAiOps] 리뷰 생성 요청 — movieId={}, style={}, length={}",
-                request.movieId(), request.style(), request.length());
-
-        // Agent 호출 페이로드 (snake_case)
-        Map<String, Object> body = Map.of(
-                "movie_id", request.movieId(),
-                "style", request.style() != null ? request.style() : "neutral",
-                "length", request.length() != null ? request.length() : "medium"
-        );
-
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = agentRestClient.post()
-                    .uri(agentUrl + "/api/v1/admin/ai/review/generate")
-                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(Map.class);
-
-            if (response == null) {
-                return new GenerateReviewResponse(false, "Agent 응답이 비어 있습니다.");
-            }
-
-            String reviewText = (String) response.getOrDefault("review_text", "");
-            String agentMessage = (String) response.getOrDefault("message", "");
-            Boolean success = (Boolean) response.getOrDefault("success", false);
-
-            if (Boolean.TRUE.equals(success) && !reviewText.isBlank()) {
-                log.info("[AdminAiOps] 리뷰 생성 완료 — movieId={}, length={}",
-                        request.movieId(), reviewText.length());
-                return new GenerateReviewResponse(true, reviewText);
-            }
-
-            return new GenerateReviewResponse(false,
-                    agentMessage.isBlank() ? "Agent 가 빈 리뷰를 반환했습니다." : agentMessage);
-        } catch (Exception e) {
-            log.error("[AdminAiOps] 리뷰 생성 실패 — movieId={}, error={}",
-                    request.movieId(), e.getMessage());
-            return new GenerateReviewResponse(false,
-                    "Agent 호출 실패: " + e.getMessage());
-        }
-    }
-
     // ======================== 챗봇 세션 ========================
+    // 2026-04-08: AI 리뷰 이력/생성 기능 제거 — ai_generated 플래그 부재로 의미 없음
 
     /**
      * 전체 채팅 세션 목록을 최신순으로 페이징 조회한다.
@@ -307,24 +184,6 @@ public class AdminAiOpsService {
                 quiz.getQuizDate() != null ? quiz.getQuizDate().toString() : null,
                 quiz.getCreatedAt(),
                 quiz.getUpdatedAt()
-        );
-    }
-
-    /**
-     * {@link Review} → {@link ReviewSummary} 응답 DTO.
-     *
-     * <p>Review는 {@code String userId} 직접 보관 구조 (§15.4).</p>
-     */
-    private ReviewSummary toReviewSummary(Review review) {
-        return new ReviewSummary(
-                review.getReviewId(),
-                review.getUserId(),
-                review.getMovieId(),
-                review.getRating(),
-                review.getContent(),
-                review.isDeleted(),
-                review.isBlinded(),
-                review.getCreatedAt()
         );
     }
 
