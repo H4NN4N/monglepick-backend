@@ -105,6 +105,17 @@ spring:
       mode: ${SQL_INIT_MODE:never}
 
 ## -------------------------------------------------------------------------
+## Dev Auth (개발 전용 간편 인증)
+## -------------------------------------------------------------------------
+## Swagger UI에서 Authorize → DevMasterKeyAuth에 마스터키 입력 시 모든 API 인증 통과.
+## 로컬 개발 환경에서는 기본 활성화 (true), 운영 환경에서는 DEV_AUTH_ENABLED=false 환경변수로 비활성화.
+## ⚠ 운영 배포 시 반드시 DEV_AUTH_ENABLED=false 설정 필수 (docker-compose.prod.app.yml 에 이미 설정됨)
+dev:
+  auth:
+    enabled: ${DEV_AUTH_ENABLED:true}
+  master-key: ${DEV_MASTER_KEY:monglepick-dev-master-2026}
+
+## -------------------------------------------------------------------------
 ## Swagger/OpenAPI 설정
 ## -------------------------------------------------------------------------
 ## springdoc-openapi로 API 문서를 자동 생성한다.
