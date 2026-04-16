@@ -3,7 +3,6 @@ package com.monglepick.monglepickbackend.domain.recommendation.controller;
 import com.monglepick.monglepickbackend.domain.recommendation.dto.RecommendationHistoryDto;
 import com.monglepick.monglepickbackend.domain.recommendation.service.RecommendationHistoryService;
 import com.monglepick.monglepickbackend.global.controller.BaseController;
-import com.monglepick.monglepickbackend.global.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -82,7 +81,7 @@ public class RecommendationHistoryController extends BaseController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 필요")
     })
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<RecommendationHistoryDto.RecommendationHistoryResponse>>> getRecommendationHistory(
+    public ResponseEntity<Page<RecommendationHistoryDto.RecommendationHistoryResponse>> getRecommendationHistory(
             @Parameter(description = "페이지 번호 (0-based)", example = "0")
             @RequestParam(defaultValue = "0") int page,
 
@@ -102,10 +101,16 @@ public class RecommendationHistoryController extends BaseController {
 
         log.debug("추천 이력 목록 조회 요청: userId={}, page={}, size={}", userId, page, limitedSize);
 
+        // 2026-04-16 반환 타입 bare 화 (ApiResponse 래핑 제거).
+        // 프로젝트 컨벤션: 페이징 리스트 엔드포인트는 ApiResponse 래핑 없이 Page 직접 반환.
+        //   - PointController.getHistory / PostController.getSharedPlaylistPosts 참조
+        // 이전(ApiResponse<Page<..>>) 은 Client 의 axios 인터셉터가 response.data 1회만 언래핑하므로
+        // 최종 data={success, data:{content}, error} 형태가 되어 RecommendationPage `data?.content`
+        // 접근이 undefined 로 귀결 → 실제 48건 저장되어 있어도 빈 배열로 렌더링되던 문제.
         Page<RecommendationHistoryDto.RecommendationHistoryResponse> result =
                 recommendationHistoryService.getRecommendationHistory(userId, pageable);
 
-        return ResponseEntity.ok(ApiResponse.ok(result));
+        return ResponseEntity.ok(result);
     }
 
     // ─────────────────────────────────────────────
@@ -134,7 +139,7 @@ public class RecommendationHistoryController extends BaseController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "추천 이력 없음 또는 본인 이력 아님")
     })
     @PostMapping("/{recommendationLogId}/wishlist")
-    public ResponseEntity<ApiResponse<RecommendationHistoryDto.WishlistToggleResponse>> toggleWishlist(
+    public ResponseEntity<RecommendationHistoryDto.WishlistToggleResponse> toggleWishlist(
             @Parameter(description = "찜 토글 대상 추천 로그 ID", required = true, example = "42")
             @PathVariable Long recommendationLogId,
 
@@ -143,10 +148,11 @@ public class RecommendationHistoryController extends BaseController {
         String userId = resolveUserId(principal);
         log.info("추천 이력 찜 토글 요청: recommendationLogId={}, userId={}", recommendationLogId, userId);
 
+        // 2026-04-16 반환 타입 bare 화 (목록 EP 와 동일 사유 — Client `result?.wishlisted` 접근 정상화)
         RecommendationHistoryDto.WishlistToggleResponse result =
                 recommendationHistoryService.toggleWishlist(recommendationLogId, userId);
 
-        return ResponseEntity.ok(ApiResponse.ok(result));
+        return ResponseEntity.ok(result);
     }
 
     /**
@@ -171,7 +177,7 @@ public class RecommendationHistoryController extends BaseController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "추천 이력 없음 또는 본인 이력 아님")
     })
     @PostMapping("/{recommendationLogId}/watched")
-    public ResponseEntity<ApiResponse<RecommendationHistoryDto.WatchedToggleResponse>> toggleWatched(
+    public ResponseEntity<RecommendationHistoryDto.WatchedToggleResponse> toggleWatched(
             @Parameter(description = "봤어요 토글 대상 추천 로그 ID", required = true, example = "42")
             @PathVariable Long recommendationLogId,
 
@@ -180,9 +186,10 @@ public class RecommendationHistoryController extends BaseController {
         String userId = resolveUserId(principal);
         log.info("추천 이력 봤어요 토글 요청: recommendationLogId={}, userId={}", recommendationLogId, userId);
 
+        // 2026-04-16 반환 타입 bare 화 (목록 EP 와 동일 사유 — Client `result?.watched` 접근 정상화)
         RecommendationHistoryDto.WatchedToggleResponse result =
                 recommendationHistoryService.toggleWatched(recommendationLogId, userId);
 
-        return ResponseEntity.ok(ApiResponse.ok(result));
+        return ResponseEntity.ok(result);
     }
 }
