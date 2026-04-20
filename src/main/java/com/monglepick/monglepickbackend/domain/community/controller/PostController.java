@@ -169,6 +169,26 @@ public class PostController {
     // ──────────────────────────────────────────────
 
     /**
+     * 내가 쓴 게시글 목록 조회 API (JWT 필수, 마이페이지용)
+     */
+    @Operation(summary = "내가 쓴 게시글 목록 조회", description = "JWT 기준 본인이 작성한 PUBLISHED 게시글 목록을 페이징 조회합니다.")
+    @ApiResponse(responseCode = "200", description = "내 게시글 목록 조회 성공")
+    @SecurityRequirement(name = "BearerAuth")
+    @GetMapping("/me")
+    public ResponseEntity<Page<PostResponse>> getMyPosts(
+            @PageableDefault(size = 15, sort = "createdAt", direction = Sort.Direction.DESC)
+            Pageable pageable,
+            @AuthenticationPrincipal String userId) {
+
+        int safeSize = Math.min(pageable.getPageSize(), AppConstants.MAX_PAGE_SIZE);
+        Pageable safePage = org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), safeSize, pageable.getSort());
+
+        Page<PostResponse> posts = postService.getMyPosts(userId, safePage);
+        return ResponseEntity.ok(posts);
+    }
+
+    /**
      * 임시저장 작성 API (인증 필요)
      */
     @Operation(summary = "임시저장 작성", description = "게시글을 DRAFT 상태로 임시 저장")
