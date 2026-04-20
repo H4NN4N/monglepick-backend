@@ -8,12 +8,17 @@ import com.monglepick.monglepickbackend.admin.dto.AdminAiOpsDto.ReverifyResponse
 import com.monglepick.monglepickbackend.admin.repository.AdminCourseVerificationRepository;
 import com.monglepick.monglepickbackend.domain.movie.entity.Movie;
 import com.monglepick.monglepickbackend.domain.movie.repository.MovieRepository;
+import com.monglepick.monglepickbackend.domain.roadmap.entity.CourseReview;
 import com.monglepick.monglepickbackend.domain.roadmap.entity.CourseVerification;
+import com.monglepick.monglepickbackend.domain.roadmap.repository.CourseReviewRepository;
+import com.monglepick.monglepickbackend.domain.roadmap.repository.CourseVerificationRepository;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationStartedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -23,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 관리자 "AI 운영 → 리뷰 인증" 탭 전용 서비스 — 2026-04-14 신규.
@@ -60,6 +67,10 @@ public class AdminReviewVerificationService {
 
     /** 관리자 감사 로그 서비스 (승인/반려 이벤트 기록) */
     private final AdminAuditService adminAuditService;
+
+    /** 기존 CourseReview 백필용 — 도메인 리포지토리 */
+    private final CourseReviewRepository courseReviewRepository;
+    private final CourseVerificationRepository courseVerificationRepository;
 
     /**
      * AI 자동 승인 임계값 — application.yml {@code app.ai.review-verification.threshold}.
@@ -361,6 +372,40 @@ public class AdminReviewVerificationService {
         if (s == null) return null;
         if (s.length() <= maxLen) return s;
         return s.substring(0, maxLen) + "...";
+    }
+
+    /**
+     * 기존 CourseReview 레코드 중 CourseVerification(REVIEW) 이 없는 것들을 PENDING 상태로 백필.
+     *
+     * <p>2026-04-20 이전에 저장된 리뷰는 course_verification 레코드가 없어 관리자 탭이 비어 보임.
+     * 애플리케이션 시작 시 1회 실행되며 이미 레코드가 있는 행은 스킵(멱등성 보장).</p>
+     */
+    @EventListener(ApplicationStartedEvent.class)
+    @Transactional
+    public void backfillReviewVerifications() {
+        List<CourseReview> allReviews = courseReviewRepository.findAll();
+        if (allReviews.isEmpty()) return;
+
+        List<CourseVerification> toSave = new ArrayList<>();
+        for (CourseReview review : allReviews) {
+            boolean exists = courseVerificationRepository
+                    .findByUserIdAndCourseIdAndMovieId(
+                            review.getUserId(), review.getCourseId(), review.getMovieId())
+                    .isPresent();
+            if (!exists) {
+                toSave.add(CourseVerification.builder()
+                        .userId(review.getUserId())
+                        .courseId(review.getCourseId())
+                        .movieId(review.getMovieId())
+                        .verificationType("REVIEW")
+                        .build());
+            }
+        }
+
+        if (!toSave.isEmpty()) {
+            reviewVerificationRepository.saveAll(toSave);
+            log.info("[ReviewVerify] 기존 CourseReview 백필 완료 — {}건 생성", toSave.size());
+        }
     }
 
     /**

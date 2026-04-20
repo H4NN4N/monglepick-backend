@@ -50,6 +50,7 @@ public interface AdminCourseVerificationRepository extends JpaRepository<CourseV
      * @return 필터링된 리뷰 인증 페이지 (createdAt DESC)
      */
     @Query(
+        value =
         "SELECT v FROM CourseVerification v WHERE " +
         "v.verificationType = 'REVIEW' AND " +
         "(:reviewStatus  IS NULL OR v.reviewStatus = :reviewStatus) AND " +
@@ -58,7 +59,16 @@ public interface AdminCourseVerificationRepository extends JpaRepository<CourseV
         "(:courseId      IS NULL OR LOWER(v.courseId) LIKE LOWER(CONCAT('%', :courseId, '%'))) AND " +
         "(:fromDate      IS NULL OR v.createdAt >= :fromDate) AND " +
         "(:toDate        IS NULL OR v.createdAt <  :toDate) " +
-        "ORDER BY v.createdAt DESC"
+        "ORDER BY v.createdAt DESC",
+        countQuery =
+        "SELECT COUNT(v) FROM CourseVerification v WHERE " +
+        "v.verificationType = 'REVIEW' AND " +
+        "(:reviewStatus  IS NULL OR v.reviewStatus = :reviewStatus) AND " +
+        "(:minConfidence IS NULL OR (v.aiConfidence IS NOT NULL AND v.aiConfidence >= :minConfidence)) AND " +
+        "(:userId        IS NULL OR LOWER(v.userId)   LIKE LOWER(CONCAT('%', :userId, '%'))) AND " +
+        "(:courseId      IS NULL OR LOWER(v.courseId) LIKE LOWER(CONCAT('%', :courseId, '%'))) AND " +
+        "(:fromDate      IS NULL OR v.createdAt >= :fromDate) AND " +
+        "(:toDate        IS NULL OR v.createdAt <  :toDate)"
     )
     Page<CourseVerification> searchReviewVerifications(
             @Param("reviewStatus") String reviewStatus,
