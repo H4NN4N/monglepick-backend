@@ -266,6 +266,21 @@ public class PostService {
     }
 
     /**
+     * 내가 쓴 게시글 목록 조회 (PUBLISHED 상태만, 마이페이지용).
+     */
+    public Page<PostResponse> getMyPosts(String userId, Pageable pageable) {
+        int offset = (int) pageable.getOffset();
+        int limit  = pageable.getPageSize();
+        String statusStr = PostStatus.PUBLISHED.name();
+
+        List<Post> posts = postMapper.findByUserIdAndStatus(userId, statusStr, offset, limit);
+        long total = postMapper.countByUserIdAndStatus(userId, statusStr);
+
+        List<PostResponse> content = posts.stream().map(PostResponse::from).toList();
+        return new PageImpl<>(content, pageable, total);
+    }
+
+    /**
      * 사용자의 임시저장 목록을 조회한다.
      */
     public Page<PostResponse> getDrafts(String userId, Pageable pageable) {

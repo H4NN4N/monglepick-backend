@@ -1,11 +1,14 @@
 package com.monglepick.monglepickbackend.domain.user.controller;
 
+import com.monglepick.monglepickbackend.domain.community.dto.PostResponse;
+import com.monglepick.monglepickbackend.domain.community.service.PostService;
 import com.monglepick.monglepickbackend.domain.user.dto.UpdateProfileRequest;
 import com.monglepick.monglepickbackend.domain.user.dto.UserResponse;
 import com.monglepick.monglepickbackend.domain.user.entity.UserPreference;
 import com.monglepick.monglepickbackend.domain.userwatchhistory.dto.UserWatchHistoryResponse;
 import com.monglepick.monglepickbackend.domain.wishlist.dto.WishlistResponse;
 import com.monglepick.monglepickbackend.domain.user.service.UserService;
+import com.monglepick.monglepickbackend.global.constants.AppConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -44,6 +47,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserService userService;
+    private final PostService postService;
 
     /**
      * 프로필 조회 API
@@ -183,6 +187,25 @@ public class UserController {
         log.info("위시리스트 제거 요청 - userId: {}, movieId: {}", userId, movieId);
         userService.removeFromWishlist(userId, movieId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 내가 쓴 게시글 목록 조회 API (마이페이지용)
+     */
+    @Operation(summary = "내가 쓴 게시글 목록 조회", description = "JWT 기준 본인이 작성한 PUBLISHED 게시글 목록을 페이징 조회합니다.")
+    @ApiResponse(responseCode = "200", description = "내 게시글 목록 조회 성공")
+    @SecurityRequirement(name = "BearerAuth")
+    @GetMapping("/posts")
+    public ResponseEntity<Page<PostResponse>> getMyPosts(
+            @AuthenticationPrincipal String userId,
+            @PageableDefault(size = 15, sort = "createdAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+
+        int safeSize = Math.min(pageable.getPageSize(), AppConstants.MAX_PAGE_SIZE);
+        Pageable safePage = org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), safeSize, pageable.getSort());
+
+        return ResponseEntity.ok(postService.getMyPosts(userId, safePage));
     }
 
     /**
