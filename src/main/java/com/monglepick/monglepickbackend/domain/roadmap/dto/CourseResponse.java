@@ -152,6 +152,7 @@ public class CourseResponse {
      * @param started           현재 사용자가 이미 코스를 시작했는지 여부
      * @param progressPercent   현재 사용자의 진행률 % (미시작 시 0.0)
      * @param completedMovieIds 현재 사용자가 완료(리뷰 작성) 처리한 영화 ID 목록 (미시작/비로그인 시 빈 리스트)
+     * @param rejectedMovies    관리자가 반려(ADMIN_REJECTED) 처리한 영화 목록 (movieId + rejectionReason) — "시청 재인증" 버튼 및 사유 표시용
      * @param deadlineDays      코스 완주 데드라인 (일 수, null이면 제한 없음)
      * @param deadlineAt        현재 사용자의 완주 데드라인 시각 (미시작/데드라인 없으면 null)
      */
@@ -169,30 +170,20 @@ public class CourseResponse {
             boolean started,
             double progressPercent,
             List<String> completedMovieIds,
+            List<RejectedMovieInfo> rejectedMovies,
             Integer deadlineDays,
             LocalDateTime deadlineAt
     ) {
-        /**
-         * RoadmapCourse 엔티티와 진행 정보로부터 상세 응답 DTO를 생성한다.
-         *
-         * @param course             코스 엔티티
-         * @param movies             영화 상세 목록
-         * @param started            코스 시작 여부
-         * @param progressPercent    현재 진행률 %
-         * @param completedMovieIds  완료된 영화 ID 목록
-         * @param deadlineAt         사용자의 완주 데드라인 시각 (null 가능)
-         * @return CourseDetailResponse
-         */
         public static CourseDetailResponse from(RoadmapCourse course,
                                                 List<MovieInfo> movies,
                                                 boolean started,
                                                 double progressPercent,
                                                 List<String> completedMovieIds,
+                                                List<RejectedMovieInfo> rejectedMovies,
                                                 LocalDateTime deadlineAt) {
             return new CourseDetailResponse(
                     course.getRoadmapCourseId(),
                     course.getCourseId(),
-                    /* id = courseId alias (프론트엔드 course.id 호환) */
                     course.getCourseId(),
                     course.getTitle(),
                     course.getDescription(),
@@ -204,11 +195,27 @@ public class CourseResponse {
                     started,
                     progressPercent,
                     completedMovieIds,
+                    rejectedMovies,
                     course.getDeadlineDays(),
                     deadlineAt
             );
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // 관리자 반려 영화 정보 (상세 조회 전용)
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * 관리자가 반려한 영화 정보 DTO.
+     *
+     * @param movieId         반려된 영화 ID
+     * @param rejectionReason 관리자/AI 판정 사유 (nullable)
+     */
+    public record RejectedMovieInfo(
+            String movieId,
+            String rejectionReason
+    ) {}
 
     // ─────────────────────────────────────────────────────────────────
     // 코스 시작 응답

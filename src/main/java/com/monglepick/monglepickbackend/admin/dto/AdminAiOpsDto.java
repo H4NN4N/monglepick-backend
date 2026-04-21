@@ -167,7 +167,9 @@ public final class AdminAiOpsDto {
     public record ReviewVerificationSummary(
             Long verificationId,
             String userId,
+            String userNickname,
             String courseId,
+            String courseTitle,
             String movieId,
             String reviewPreview,
             Float similarityScore,

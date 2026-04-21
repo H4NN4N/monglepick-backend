@@ -358,4 +358,22 @@ public class CourseVerification extends BaseAuditEntity {
         this.reviewedAt = LocalDateTime.now();
         this.reviewedBy = null;
     }
+
+    /**
+     * 관리자 반려 후 사용자가 재인증을 제출할 때 인증 레코드를 초기화한다.
+     *
+     * <p>이전 AI 분석 결과(similarityScore/matchedKeywords/aiConfidence)와 반려 사유를 지우고
+     * PENDING 상태로 리셋하여 새 리뷰가 다시 AI 에이전트 큐에 들어가게 한다.</p>
+     */
+    public void resetForResubmit() {
+        this.isVerified = false;
+        this.reviewStatus = "PENDING";
+        this.similarityScore = null;
+        this.matchedKeywords = null;
+        this.aiConfidence = null;
+        this.decisionReason = null;
+        this.reviewedBy = null;
+        this.reviewedAt = null;
+        this.verifiedAt = null;
+    }
 }

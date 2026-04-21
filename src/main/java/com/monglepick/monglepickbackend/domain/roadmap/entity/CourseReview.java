@@ -107,4 +107,9 @@ public class CourseReview extends BaseAuditEntity {
 
     /* created_at, updated_at → BaseTimeEntity에서 상속 */
     /* created_by, updated_by → BaseAuditEntity에서 상속 */
+
+    /** 관리자 반려 후 재인증 시 리뷰 본문을 새 내용으로 교체한다. */
+    public void updateReviewText(String newReviewText) {
+        this.reviewText = newReviewText;
+    }
 }

@@ -272,14 +272,34 @@ public class RoadmapService {
                 .map(UserCourseProgress::getDeadlineAt)
                 .orElse(null);
 
-        // 완료된 영화 ID 목록 — course_review 테이블에서 userId/courseId 기준 조회
+        // ADMIN_REJECTED 영화 목록 — rejectedMovies 응답 구성 + completedMovieIds 필터링용
+        List<com.monglepick.monglepickbackend.domain.roadmap.dto.CourseResponse.RejectedMovieInfo> rejectedMovies;
+        java.util.Set<String> rejectedSet;
+        if (userId != null) {
+            List<Object[]> rawRejected = courseVerificationRepository
+                    .findRejectedMoviesByUserIdAndCourseId(userId, courseId);
+            rejectedMovies = rawRejected.stream()
+                    .map(row -> new com.monglepick.monglepickbackend.domain.roadmap.dto.CourseResponse.RejectedMovieInfo(
+                            (String) row[0],
+                            (String) row[1]))
+                    .toList();
+            rejectedSet = rejectedMovies.stream()
+                    .map(com.monglepick.monglepickbackend.domain.roadmap.dto.CourseResponse.RejectedMovieInfo::movieId)
+                    .collect(java.util.stream.Collectors.toSet());
+        } else {
+            rejectedMovies = Collections.emptyList();
+            rejectedSet = java.util.Collections.emptySet();
+        }
+
+        // 완료된 영화 ID 목록 — course_review 기준으로 조회하되 ADMIN_REJECTED 영화는 제외
         List<String> completedMovieIds = (userId != null)
                 ? courseReviewRepository.findAllByCourseIdAndUserId(courseId, userId).stream()
                         .map(com.monglepick.monglepickbackend.domain.roadmap.entity.CourseReview::getMovieId)
+                        .filter(id -> !rejectedSet.contains(id))
                         .toList()
                 : Collections.emptyList();
 
-        return CourseDetailResponse.from(course, movies, started, progressPercent, completedMovieIds, deadlineAt);
+        return CourseDetailResponse.from(course, movies, started, progressPercent, completedMovieIds, rejectedMovies, deadlineAt);
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -349,7 +369,18 @@ public class RoadmapService {
     public CourseReviewResponse getMovieReview(String courseId, String movieId, String userId) {
         return courseReviewRepository
                 .findByCourseIdAndMovieIdAndUserId(courseId, movieId, userId)
-                .map(CourseReviewResponse::from)
+                .map(review -> {
+                    // CourseVerification에서 상태와 반려 사유 조회
+                    String reviewStatus = null;
+                    String decisionReason = null;
+                    Optional<CourseVerification> verification = courseVerificationRepository
+                            .findByUserIdAndCourseIdAndMovieId(userId, courseId, movieId);
+                    if (verification.isPresent()) {
+                        reviewStatus = verification.get().getReviewStatus();
+                        decisionReason = verification.get().getDecisionReason();
+                    }
+                    return CourseReviewResponse.from(review, reviewStatus, decisionReason);
+                })
                 .orElseGet(() -> CourseReviewResponse.notVerified(courseId, movieId));
     }
 
@@ -389,15 +420,20 @@ public class RoadmapService {
 
         log.info("영화 완료 처리: userId={}, courseId={}, movieId={}", userId, courseId, movieId);
 
-        // 이미 인증된 영화이면 verifyMovie 호출 생략 (중복 카운트 방지)
-        boolean alreadyReviewed = courseReviewRepository
-                .findByCourseIdAndMovieIdAndUserId(courseId, movieId, userId)
-                .isPresent();
+        // 기존 인증 레코드 확인
+        Optional<CourseVerification> existingVerification = courseVerificationRepository
+                .findByUserIdAndCourseIdAndMovieId(userId, courseId, movieId);
+        boolean isAdminRejected = existingVerification
+                .map(v -> "ADMIN_REJECTED".equals(v.getReviewStatus()))
+                .orElse(false);
 
-        if (alreadyReviewed) {
+        Optional<CourseReview> existingReview = courseReviewRepository
+                .findByCourseIdAndMovieIdAndUserId(courseId, movieId, userId);
+
+        if (existingReview.isPresent() && !isAdminRejected) {
+            // 이미 인증된 영화(정상 상태) — 중복 카운트 방지
             log.debug("이미 인증된 영화 — verifyMovie 생략: courseId={}, movieId={}, userId={}",
                     courseId, movieId, userId);
-            // 현재 진행 현황만 반환 (변경 없음)
             return progressRepo.findByUserIdAndCourseId(userId, courseId)
                     .map(CourseProgressResponse::from)
                     .orElseGet(() -> new CourseProgressResponse(
@@ -407,32 +443,41 @@ public class RoadmapService {
                             false, null, null));
         }
 
-        // 신규 리뷰 저장
-        CourseReview newReview = CourseReview.builder()
-                .courseId(courseId)
-                .movieId(movieId)
-                .userId(userId)
-                .reviewText((reviewText != null && !reviewText.isBlank()) ? reviewText : null)
-                .build();
-        courseReviewRepository.save(newReview);
-        log.info("도장깨기 리뷰 저장 완료 — courseId={}, movieId={}, userId={}, hasText={}",
-                courseId, movieId, userId, reviewText != null && !reviewText.isBlank());
-
-        // 리뷰 인증 큐 레코드 생성 — 관리자 AI 운영 탭에서 모니터링/오버라이드 가능하게 함
-        // 기존 인증 레코드가 없을 때만 생성 (재시도 방어)
-        boolean verificationExists = courseVerificationRepository
-                .findByUserIdAndCourseIdAndMovieId(userId, courseId, movieId)
-                .isPresent();
-        if (!verificationExists) {
-            CourseVerification verification = CourseVerification.builder()
-                    .userId(userId)
+        if (isAdminRejected) {
+            // 관리자 반려 후 재인증 — 기존 리뷰 본문 교체, 인증 레코드 초기화
+            existingReview.ifPresent(review -> {
+                review.updateReviewText((reviewText != null && !reviewText.isBlank()) ? reviewText : null);
+                courseReviewRepository.save(review);
+            });
+            existingVerification.ifPresent(v -> {
+                v.resetForResubmit();
+                courseVerificationRepository.save(v);
+            });
+            log.info("도장깨기 재인증 처리 — courseId={}, movieId={}, userId={}", courseId, movieId, userId);
+        } else {
+            // 신규 리뷰 저장
+            CourseReview newReview = CourseReview.builder()
                     .courseId(courseId)
                     .movieId(movieId)
-                    .verificationType("REVIEW")
+                    .userId(userId)
+                    .reviewText((reviewText != null && !reviewText.isBlank()) ? reviewText : null)
                     .build();
-            courseVerificationRepository.save(verification);
-            log.info("도장깨기 리뷰 인증 큐 등록 완료 — courseId={}, movieId={}, userId={}",
-                    courseId, movieId, userId);
+            courseReviewRepository.save(newReview);
+            log.info("도장깨기 리뷰 저장 완료 — courseId={}, movieId={}, userId={}, hasText={}",
+                    courseId, movieId, userId, reviewText != null && !reviewText.isBlank());
+
+            // 리뷰 인증 큐 레코드 생성 (기존 없을 때만)
+            if (existingVerification.isEmpty()) {
+                CourseVerification verification = CourseVerification.builder()
+                        .userId(userId)
+                        .courseId(courseId)
+                        .movieId(movieId)
+                        .verificationType("REVIEW")
+                        .build();
+                courseVerificationRepository.save(verification);
+                log.info("도장깨기 리뷰 인증 큐 등록 완료 — courseId={}, movieId={}, userId={}",
+                        courseId, movieId, userId);
+            }
         }
 
         // verifyMovie에 위임 — 진행 레코드 생성/업데이트 + 완주 판정 + 리워드 지급
@@ -458,8 +503,9 @@ public class RoadmapService {
         if (userId == null || movieCount == 0) {
             return 0.0;
         }
-        long completedCount = courseReviewRepository.countByCourseIdAndUserId(courseId, userId);
-        return completedCount == 0 ? 0.0 : (double) completedCount / movieCount * 100.0;
+        return progressRepo.findByUserIdAndCourseId(userId, courseId)
+                .map(p -> p.getProgressPercent().doubleValue())
+                .orElse(0.0);
     }
 
     /**

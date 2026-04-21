@@ -230,8 +230,8 @@ public class AdminAiOpsController {
      *
      * @param reviewStatus  상태 필터 (PENDING/AUTO_VERIFIED/NEEDS_REVIEW/AUTO_REJECTED/ADMIN_APPROVED/ADMIN_REJECTED)
      * @param minConfidence 최소 AI 신뢰도 (0.0~1.0)
-     * @param userId        사용자 ID 부분 일치
-     * @param courseId      코스 ID 부분 일치
+     * @param userKeyword         사용자 닉네임/이메일 부분 일치
+     * @param courseTitleKeyword  코스 제목 부분 일치
      * @param fromDate      createdAt 시작 (ISO DATE, inclusive)
      * @param toDate        createdAt 종료 (ISO DATE, inclusive — 서비스 레이어에서 exclusive 변환)
      * @param pageable      페이지 정보 (기본 size=20)
@@ -249,11 +249,11 @@ public class AdminAiOpsController {
             @Parameter(description = "최소 AI 신뢰도 (0.0~1.0)")
             @RequestParam(required = false) Float minConfidence,
 
-            @Parameter(description = "사용자 ID 부분 일치 키워드")
-            @RequestParam(required = false) String userId,
+            @Parameter(description = "사용자 닉네임/이메일 부분 일치 키워드")
+            @RequestParam(required = false) String userKeyword,
 
-            @Parameter(description = "코스 ID 부분 일치 키워드")
-            @RequestParam(required = false) String courseId,
+            @Parameter(description = "코스 제목 부분 일치 키워드")
+            @RequestParam(required = false) String courseTitleKeyword,
 
             @Parameter(description = "createdAt 시작 inclusive (ISO-8601 DATE)")
             @RequestParam(required = false)
@@ -267,10 +267,10 @@ public class AdminAiOpsController {
 
             @PageableDefault(size = 20) Pageable pageable
     ) {
-        log.debug("[AdminReviewVerify] 목록 조회 — status={}, minConf={}, userId={}, courseId={}, from={}, to={}, page={}",
-                reviewStatus, minConfidence, userId, courseId, fromDate, toDate, pageable.getPageNumber());
+        log.debug("[AdminReviewVerify] 목록 조회 — status={}, minConf={}, userKeyword={}, courseTitleKeyword={}, from={}, to={}, page={}",
+                reviewStatus, minConfidence, userKeyword, courseTitleKeyword, fromDate, toDate, pageable.getPageNumber());
         Page<ReviewVerificationSummary> result = reviewVerificationService.search(
-                reviewStatus, minConfidence, userId, courseId, fromDate, toDate, pageable
+                reviewStatus, minConfidence, userKeyword, courseTitleKeyword, fromDate, toDate, pageable
         );
         return ResponseEntity.ok(ApiResponse.ok(result));
     }

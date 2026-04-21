@@ -208,4 +208,25 @@ public class UserCourseProgress extends BaseAuditEntity {
     public void markRewardGranted() {
         this.rewardGranted = true;
     }
+
+    /**
+     * 영화 1개 인증을 취소한다 (관리자 반려 시 호출).
+     *
+     * <p>verifiedMovies를 1 감소시키고 progressPercent를 재계산한다.
+     * COMPLETED 상태였으면 IN_PROGRESS로 되돌린다.</p>
+     */
+    public void unverify() {
+        if (this.verifiedMovies > 0) {
+            this.verifiedMovies--;
+        }
+        if (this.totalMovies > 0) {
+            this.progressPercent = BigDecimal.valueOf(this.verifiedMovies)
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(BigDecimal.valueOf(this.totalMovies), 2, RoundingMode.HALF_UP);
+        }
+        if (this.status == CourseProgressStatus.COMPLETED) {
+            this.status = CourseProgressStatus.IN_PROGRESS;
+            this.completedAt = null;
+        }
+    }
 }

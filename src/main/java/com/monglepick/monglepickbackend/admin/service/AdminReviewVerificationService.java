@@ -10,8 +10,10 @@ import com.monglepick.monglepickbackend.domain.movie.entity.Movie;
 import com.monglepick.monglepickbackend.domain.movie.repository.MovieRepository;
 import com.monglepick.monglepickbackend.domain.roadmap.entity.CourseReview;
 import com.monglepick.monglepickbackend.domain.roadmap.entity.CourseVerification;
+import com.monglepick.monglepickbackend.domain.roadmap.entity.UserCourseProgress;
 import com.monglepick.monglepickbackend.domain.roadmap.repository.CourseReviewRepository;
 import com.monglepick.monglepickbackend.domain.roadmap.repository.CourseVerificationRepository;
+import com.monglepick.monglepickbackend.domain.roadmap.repository.UserCourseProgressRepository;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -72,6 +74,9 @@ public class AdminReviewVerificationService {
     private final CourseReviewRepository courseReviewRepository;
     private final CourseVerificationRepository courseVerificationRepository;
 
+    /** 관리자 판정 결과를 사용자 코스 진행률에 동기화 */
+    private final UserCourseProgressRepository userCourseProgressRepository;
+
     /**
      * AI 자동 승인 임계값 — application.yml {@code app.ai.review-verification.threshold}.
      *
@@ -119,26 +124,26 @@ public class AdminReviewVerificationService {
     public Page<ReviewVerificationSummary> search(
             String reviewStatus,
             Float minConfidence,
-            String userId,
-            String courseId,
+            String userKeyword,
+            String courseTitleKeyword,
             LocalDate fromDate,
             LocalDate toDate,
             Pageable pageable
     ) {
         // 빈 문자열 → null 정규화 (JPQL IS NULL 조건 활성화)
         String status = (reviewStatus != null && !reviewStatus.isBlank()) ? reviewStatus.trim() : null;
-        String uid    = (userId != null && !userId.isBlank())             ? userId.trim()       : null;
-        String cid    = (courseId != null && !courseId.isBlank())         ? courseId.trim()     : null;
+        String uKw    = (userKeyword != null && !userKeyword.isBlank())             ? userKeyword.trim()       : null;
+        String cKw    = (courseTitleKeyword != null && !courseTitleKeyword.isBlank()) ? courseTitleKeyword.trim() : null;
 
         // toDate 는 inclusive 로 받아 자정 경계 누락 방지 차원에서 +1일의 자정(exclusive) 으로 변환
         LocalDateTime from = (fromDate != null) ? fromDate.atStartOfDay() : null;
         LocalDateTime to   = (toDate != null)   ? toDate.plusDays(1).atStartOfDay() : null;
 
-        log.debug("[AdminReviewVerify] 목록 조회 — status={}, minConf={}, userId={}, courseId={}, from={}, to={}, page={}",
-                status, minConfidence, uid, cid, from, to, pageable.getPageNumber());
+        log.debug("[AdminReviewVerify] 목록 조회 — status={}, minConf={}, userKeyword={}, courseTitleKeyword={}, from={}, to={}, page={}",
+                status, minConfidence, uKw, cKw, from, to, pageable.getPageNumber());
 
         return reviewVerificationRepository
-                .searchReviewVerifications(status, minConfidence, uid, cid, from, to, pageable)
+                .searchReviewVerifications(status, minConfidence, uKw, cKw, from, to, pageable)
                 .map(this::toSummary);
     }
 
@@ -234,9 +239,21 @@ public class AdminReviewVerificationService {
         CourseVerification v = loadReviewVerification(verificationId);
         String actor  = resolveCurrentActor();
         String reason = normalizeReason(request);
+        String prevStatus = v.getReviewStatus();
 
         log.info("[AdminReviewVerify] 수동 승인 — id={}, actor={}, reason={}", verificationId, actor, reason);
         v.approveByAdmin(actor, reason);
+
+        // ADMIN_REJECTED였던 경우 count가 이미 감소되어 있으므로 복원
+        if ("ADMIN_REJECTED".equals(prevStatus)) {
+            userCourseProgressRepository.findByUserIdAndCourseId(v.getUserId(), v.getCourseId())
+                    .ifPresent(progress -> {
+                        progress.verify();
+                        userCourseProgressRepository.save(progress);
+                        log.info("[AdminReviewVerify] 승인 → 진행률 복원: userId={}, courseId={}, verifiedMovies={}",
+                                v.getUserId(), v.getCourseId(), progress.getVerifiedMovies());
+                    });
+        }
 
         // 감사 로그 — before/after 스냅샷은 상태/유저ID 수준만 가볍게
         adminAuditService.log(
@@ -265,9 +282,21 @@ public class AdminReviewVerificationService {
         CourseVerification v = loadReviewVerification(verificationId);
         String actor  = resolveCurrentActor();
         String reason = normalizeReason(request);
+        String prevStatus = v.getReviewStatus();
 
         log.info("[AdminReviewVerify] 수동 반려 — id={}, actor={}, reason={}", verificationId, actor, reason);
         v.rejectByAdmin(actor, reason);
+
+        // 이미 반려 상태가 아니었다면 카운트 감소
+        if (!"ADMIN_REJECTED".equals(prevStatus)) {
+            userCourseProgressRepository.findByUserIdAndCourseId(v.getUserId(), v.getCourseId())
+                    .ifPresent(progress -> {
+                        progress.unverify();
+                        userCourseProgressRepository.save(progress);
+                        log.info("[AdminReviewVerify] 반려 → 진행률 감소: userId={}, courseId={}, verifiedMovies={}",
+                                v.getUserId(), v.getCourseId(), progress.getVerifiedMovies());
+                    });
+        }
 
         adminAuditService.log(
                 ACTION_REVIEW_VERIFY_REJECT,
@@ -293,9 +322,21 @@ public class AdminReviewVerificationService {
     @Transactional
     public ReverifyResponse reverify(Long verificationId) {
         CourseVerification v = loadReviewVerification(verificationId);
+        String prevStatus = v.getReviewStatus();
         log.info("[AdminReviewVerify] 재검증 요청 — id={} (에이전트 미구현, PENDING 으로만 복귀)", verificationId);
 
         v.requestReverify();
+
+        // ADMIN_REJECTED였다면 낙관적으로 카운트 복원 (재검증 대기 중에도 진행률 반영)
+        if ("ADMIN_REJECTED".equals(prevStatus)) {
+            userCourseProgressRepository.findByUserIdAndCourseId(v.getUserId(), v.getCourseId())
+                    .ifPresent(progress -> {
+                        progress.verify();
+                        userCourseProgressRepository.save(progress);
+                        log.info("[AdminReviewVerify] 재검증 → 진행률 복원: userId={}, courseId={}, verifiedMovies={}",
+                                v.getUserId(), v.getCourseId(), progress.getVerifiedMovies());
+                    });
+        }
 
         return new ReverifyResponse(
                 verificationId,
@@ -337,12 +378,16 @@ public class AdminReviewVerificationService {
     private ReviewVerificationSummary toSummary(CourseVerification v) {
         String reviewText = reviewVerificationRepository
                 .findCourseReviewText(v.getUserId(), v.getCourseId(), v.getMovieId());
-        String preview = truncate(reviewText, REVIEW_PREVIEW_MAX_LENGTH);
+        String preview     = truncate(reviewText, REVIEW_PREVIEW_MAX_LENGTH);
+        String userNickname  = reviewVerificationRepository.findUserNicknameByUserId(v.getUserId());
+        String courseTitle   = reviewVerificationRepository.findCourseTitleByCourseId(v.getCourseId());
 
         return new ReviewVerificationSummary(
                 v.getVerificationId(),
                 v.getUserId(),
+                userNickname,
                 v.getCourseId(),
+                courseTitle,
                 v.getMovieId(),
                 preview,
                 v.getSimilarityScore(),
