@@ -23,17 +23,17 @@ import lombok.NoArgsConstructor;
  * <h3>주요 필드</h3>
  * <ul>
  *   <li>{@code userId} — 사용자 ID</li>
- *   <li>{@code genreName} — 장르명 (예: "액션", "로맨스")</li>
+ *   <li>{@code genreId} — {@code genre_master.genre_id}를 저장하는 내부 장르 ID</li>
  *   <li>{@code priority} — 우선순위 (0이 가장 높음)</li>
  * </ul>
  *
  * <h3>제약조건</h3>
- * <p>UNIQUE(user_id, genre_name) — 동일 사용자가 동일 장르를 중복 등록할 수 없다.</p>
+ * <p>UNIQUE(user_id, genre_name) — 동일 사용자가 동일 장르 ID를 중복 등록할 수 없다.</p>
  */
 @Entity
 @Table(
         name = "fav_genre",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "genre_name"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "genre_id"})
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -59,11 +59,13 @@ public class FavGenre extends BaseAuditEntity {
     private String userId;
 
     /**
-     * 장르명 (VARCHAR(50), NOT NULL).
-     * 예: "액션", "코미디", "SF", "로맨스", "호러"
+     * 장르 ID (VARCHAR(50), NOT NULL, 물리 컬럼명: genre_name).
+     *
+     * <p>기존 컬럼명은 {@code genre_name}이지만, 이제 의미상으로는
+     * {@code genre_master.genre_id}를 저장한다.</p>
      */
-    @Column(name = "genre_name", length = 50, nullable = false)
-    private String genreName;
+    @Column(name = "genre_id", nullable = false)
+    private Long genreId;
 
     /**
      * 우선순위.
