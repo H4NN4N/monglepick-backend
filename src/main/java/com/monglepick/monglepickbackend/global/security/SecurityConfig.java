@@ -350,6 +350,9 @@ public class SecurityConfig {
                 /* OCR 실관람 인증 이벤트 공개 목록 — 비로그인 허용 (2026-04-14 신규, 커뮤니티 실관람인증 탭) */
                 .requestMatchers(HttpMethod.GET, "/api/v1/ocr-events/**").permitAll()
 
+                /* OCR 이미지 분석 — 비로그인 허용 (영수증 텍스트 추출, Python OCR 위임) */
+                .requestMatchers(HttpMethod.POST, "/api/v1/ocr-events/analyze").permitAll()
+
                 /* 나머지 모든 요청: 인증 필요 */
                 .anyRequest().authenticated()
             )
