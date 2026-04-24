@@ -10,6 +10,7 @@ import com.monglepick.monglepickbackend.domain.review.entity.Review;
 import com.monglepick.monglepickbackend.domain.review.entity.ReviewLike;
 import com.monglepick.monglepickbackend.domain.review.mapper.ReviewMapper;
 import com.monglepick.monglepickbackend.domain.reward.service.RewardService;
+import com.monglepick.monglepickbackend.domain.userwatchhistory.service.UserWatchHistoryService;
 import com.monglepick.monglepickbackend.global.dto.LikeToggleResponse;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
@@ -45,6 +46,17 @@ public class ReviewService {
     private final RecommendationImpactRepository recommendationImpactRepository;
 
     /**
+     * 시청 이력 서비스 — 리뷰 작성 시 user_watch_history 자동 동기화 (P0-2, 2026-04-24).
+     *
+     * <p>"봤다=리뷰" 부분 재정의 원칙(2026-04-08) 하에서 reviews(강한 신호) 와
+     * user_watch_history(약한 신호) 가 별개 테이블로 운영되지만, 유저가 마이페이지를 거치지 않고
+     * 바로 리뷰만 작성한 경우 user_watch_history 에 기록이 없어 마이페이지 시청 이력 UI 와
+     * 정합성이 깨지는 문제가 있었다. 본 서비스의 {@code ensureWatchHistoryExists} 를
+     * REQUIRES_NEW 트랜잭션으로 호출하여 정합성을 보장한다.</p>
+     */
+    private final UserWatchHistoryService userWatchHistoryService;
+
+    /**
      * 영화 리뷰를 작성한다. 같은 사용자가 같은 영화에 중복 리뷰를 작성할 수 없다.
      */
     @Transactional
@@ -72,6 +84,19 @@ public class ReviewService {
         log.info("리뷰 작성 완료 - reviewId: {}, userId: {}, movieId: {}, reviewSource: {}, reviewCategoryCode: {}",
                 review.getReviewId(), userId, movieId,
                 request.reviewSource(), request.reviewCategoryCode());
+
+        // user_watch_history 자동 동기화 (P0-2, 2026-04-24)
+        // — "봤다 = 리뷰" 정합성 확보. 마이페이지를 거치지 않고 리뷰만 작성한 경우에도
+        //   시청 이력 UI 에 즉시 반영되도록 보장.
+        // — REQUIRES_NEW 별도 트랜잭션이므로 실패해도 본 트랜잭션은 영향 없음.
+        //   추가 안전장치로 try/catch 까지 감싸 어떠한 watch_history 측 오류도
+        //   리뷰 작성 흐름을 막지 않도록 한다.
+        try {
+            userWatchHistoryService.ensureWatchHistoryExists(userId, movieId, "review_context");
+        } catch (Exception watchSyncErr) {
+            log.warn("리뷰 작성 후 watch_history 동기화 실패 - reviewId:{}, userId:{}, movieId:{}, err:{}",
+                    review.getReviewId(), userId, movieId, watchSyncErr.getMessage());
+        }
 
         // 리워드 지급 — 결과를 캡처하여 응답에 포함
         int contentLength = request.content() != null ? request.content().length() : 0;

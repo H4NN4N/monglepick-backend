@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -144,6 +145,50 @@ public class UserWatchHistoryService {
      * @param userWatchHistoryId 삭제할 시청 이력 PK
      * @throws BusinessException G002 INVALID_INPUT — 시청 기록이 없거나 본인 소유가 아닌 경우
      */
+    /**
+     * 리뷰 작성 시 user_watch_history 자동 동기화 (P0-2, 2026-04-24).
+     *
+     * <p><b>배경</b>: "봤다 = 리뷰" 부분 재정의 원칙(2026-04-08) 하에서
+     * reviews(강한 신호) 와 user_watch_history(약한 신호) 가 별개 테이블로 운영되지만,
+     * 유저가 마이페이지를 거치지 않고 바로 리뷰만 작성한 경우 user_watch_history 에는
+     * 기록이 없어 마이페이지 시청 이력 UI 와 정합성이 깨지는 문제가 있었다.</p>
+     *
+     * <p>본 메서드는 {@code ReviewService.createReview()} 직후 호출되어
+     * 같은 user/movie 의 시청 기록이 1건도 없으면 자동으로 1건을 INSERT 한다.</p>
+     *
+     * <h3>중복 방지</h3>
+     * <p>{@code countByUserIdAndMovieId} 로 기존 레코드 존재 여부를 확인하고
+     * 1건 이상이면 skip. 중복 허용 정책(재관람 카운트) 자체는 보존하되,
+     * "리뷰 작성" 이라는 단일 이벤트가 두 번 INSERT 를 유발하지 않도록 보호한다.</p>
+     *
+     * <h3>독립 트랜잭션</h3>
+     * <p>{@link Propagation#REQUIRES_NEW} 로 부모 트랜잭션과 완전히 분리한다.
+     * watch_history INSERT 가 어떤 이유로든 실패해도 reviews INSERT 트랜잭션이
+     * 오염되지 않으므로 호출 측에서 try/catch 로 안전하게 무시할 수 있다.
+     * (보조 데이터이므로 리뷰 작성 자체를 막아서는 안 된다는 운영 원칙 반영.)</p>
+     *
+     * @param userId      JWT 에서 추출한 사용자 ID
+     * @param movieId     리뷰 대상 영화 ID
+     * @param watchSource 시청 경로 (보통 "review_context" 로 호출됨)
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void ensureWatchHistoryExists(String userId, String movieId, String watchSource) {
+        if (userWatchHistoryRepository.countByUserIdAndMovieId(userId, movieId) > 0) {
+            log.debug("watch_history 이미 존재 - 동기화 skip: userId={}, movieId={}", userId, movieId);
+            return;
+        }
+
+        UserWatchHistory entity = UserWatchHistory.builder()
+                .userId(userId)
+                .movieId(movieId)
+                .watchedAt(LocalDateTime.now())
+                .watchSource(watchSource)
+                .build();
+        userWatchHistoryRepository.save(entity);
+        log.info("watch_history 자동 동기화 - userId:{}, movieId:{}, source:{}",
+                userId, movieId, watchSource);
+    }
+
     @Transactional
     public void deleteWatchHistory(String userId, Long userWatchHistoryId) {
         UserWatchHistory entity = userWatchHistoryRepository
