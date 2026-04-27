@@ -141,6 +141,45 @@
           AND movie_id = #{movieId}
     </select>
 
+    <!--
+        활성 리뷰 단건 조회 (UPSERT 분기용).
+        is_deleted=false 조건으로 소프트 삭제된 리뷰는 제외.
+        ReviewService.createOrUpdateFromRecommendation 에서 사용.
+    -->
+    <select id="findByUserIdAndMovieId" resultMap="reviewResultMap">
+        SELECT <include refid="reviewColumns"/>
+        FROM reviews r
+        WHERE r.user_id = #{userId}
+          AND r.movie_id = #{movieId}
+          AND r.is_deleted = false
+        LIMIT 1
+    </select>
+
+    <!--
+        (user_id, movie_id IN (...)) 활성 리뷰 배치 조회 — 추천 이력 페이지 별점 복원용.
+        movieIds 가 비어있으면 IN () 구문 SQL 오류 방지를 위해 빈 결과 반환.
+        is_deleted=false 조건. 호출부(RecommendationHistoryService)는 동일 페이지 안에서
+        같은 movie_id 가 여러 번 나올 수 있으나(같은 영화가 다른 추천 로그로 재추천되는 경우)
+        reviews 는 (userId, movieId) 단일 활성 리뷰 정책이라 결과는 movieId 별 최대 1건.
+    -->
+    <select id="findByUserIdAndMovieIds" resultMap="reviewResultMap">
+        <if test="movieIds == null or movieIds.size() == 0">
+            SELECT <include refid="reviewColumns"/>
+            FROM reviews r
+            WHERE 1 = 0
+        </if>
+        <if test="movieIds != null and movieIds.size() > 0">
+            SELECT <include refid="reviewColumns"/>
+            FROM reviews r
+            WHERE r.user_id = #{userId}
+              AND r.is_deleted = false
+              AND r.movie_id IN
+              <foreach collection="movieIds" item="mid" open="(" separator="," close=")">
+                  #{mid}
+              </foreach>
+        </if>
+    </select>
+
     <!-- ═══ Review 쓰기 ═══ -->
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="reviewId">

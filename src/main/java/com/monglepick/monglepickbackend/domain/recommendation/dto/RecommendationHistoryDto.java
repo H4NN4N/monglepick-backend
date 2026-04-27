@@ -1,7 +1,7 @@
 package com.monglepick.monglepickbackend.domain.recommendation.dto;
 
-import com.monglepick.monglepickbackend.domain.recommendation.entity.RecommendationFeedback;
 import com.monglepick.monglepickbackend.domain.recommendation.entity.RecommendationLog;
+import com.monglepick.monglepickbackend.domain.review.entity.Review;
 
 import java.time.LocalDateTime;
 
@@ -96,40 +96,48 @@ public class RecommendationHistoryDto {
             boolean watched,
 
             /**
-             * 피드백 유형 (like/dislike/watched/not_interested, 없으면 null).
-             * QA #172 (2026-04-23): 별점 복원과 함께 전송해 Frontend 가 어떤 액션이었는지 표시.
-             */
-            String feedbackType,
-
-            /**
-             * 별점 (1~5, 없으면 null).
-             * QA #172: 마이픽 추천 카드 재방문 시 별점을 원시값으로 복원하기 위한 필드.
-             * Frontend `recommendation.feedbackRating` 이 이 값을 참조한다.
+             * 별점 (1~5 정수, 없으면 null).
+             *
+             * <p>2026-04-27 통합: reviews 테이블의 활성 리뷰({@code is_deleted=false})에서
+             * (user_id, movie_id) 매칭으로 가져온다. {@code reviews.rating} 은 Double(0.5 단위)
+             * 이지만 추천 카드 UI 는 정수 1~5점 표시이므로 반올림하여 Integer 로 노출한다.
+             * 기존 {@code recommendation_feedback.rating} 경로(Integer 1~5)와 시맨틱 호환.</p>
              */
             Integer feedbackRating,
 
-            /** 피드백 코멘트 (없으면 null) */
+            /**
+             * 리뷰 본문 (없으면 null).
+             *
+             * <p>2026-04-27 통합: reviews 테이블의 {@code contents} 컬럼.
+             * 기존 {@code recommendation_feedback.comment} 경로 대체.</p>
+             */
             String feedbackComment
 
     ) {
         /**
-         * RecommendationLog 엔티티 + Impact 상태 + Feedback 을 조합해 응답 DTO를 생성한다.
+         * RecommendationLog + Impact 상태 + 활성 Review 를 조합해 응답 DTO 를 생성한다.
          *
-         * <p>QA #172 (2026-04-23): feedback 인자를 추가해 별점/코멘트/유형을 응답에 실어준다.
-         * feedback 이 null 이면 세 필드 모두 null 로 채워 기존 동작 호환.</p>
+         * <p>2026-04-27 재정의: 기존 {@code RecommendationFeedback} 인자를 폐기하고
+         * {@link Review} 로 교체. 추천 카드의 별점·코멘트는 reviews 단일 진실 원본에서
+         * 복원되며, review 가 null 이면 두 feedback* 필드 모두 null 로 채운다.</p>
          *
          * @param log        추천 로그 엔티티 (movie JOIN FETCH 필수)
          * @param wishlisted 찜 여부 (Impact 없으면 false)
          * @param watched    봤어요 여부 (Impact 없으면 false)
-         * @param feedback   이 추천에 대한 피드백 (없으면 null)
+         * @param review     해당 영화의 활성 리뷰 (없으면 null)
          * @return 추천 이력 응답 DTO
          */
         public static RecommendationHistoryResponse from(
                 RecommendationLog log,
                 boolean wishlisted,
                 boolean watched,
-                RecommendationFeedback feedback
+                Review review
         ) {
+            // reviews.rating(Double, 0.5 단위) → 추천 카드 UI 의 Integer 1~5 로 반올림 변환
+            Integer ratingInt = (review != null && review.getRating() != null)
+                    ? (int) Math.round(review.getRating())
+                    : null;
+
             return new RecommendationHistoryResponse(
                     log.getRecommendationLogId(),
                     log.getMovie().getMovieId(),
@@ -141,10 +149,8 @@ public class RecommendationHistoryDto {
                     log.getCreatedAt(),     // BaseAuditEntity.createdAt → 추천 발생 시각
                     wishlisted,
                     watched,
-                    feedback != null && feedback.getFeedbackType() != null
-                            ? feedback.getFeedbackType().name() : null,
-                    feedback != null ? feedback.getRating() : null,
-                    feedback != null ? feedback.getComment() : null
+                    ratingInt,
+                    review != null ? review.getContent() : null
             );
         }
     }

@@ -65,6 +65,26 @@ public interface ReviewMapper {
     boolean existsByUserIdAndMovieId(@Param("userId") String userId,
                                       @Param("movieId") String movieId);
 
+    /**
+     * (user_id, movie_id) 활성 리뷰 단건 조회 — 추천 카드 UPSERT 분기용.
+     *
+     * <p>{@code is_deleted = false} 조건. 소프트 삭제된 리뷰는 무시하여
+     * 추천 카드에서 새 별점 입력 시 별도 신규 리뷰로 작성되도록 한다.
+     * {@code ReviewService#createOrUpdateFromRecommendation} 에서 사용.</p>
+     */
+    Review findByUserIdAndMovieId(@Param("userId") String userId,
+                                   @Param("movieId") String movieId);
+
+    /**
+     * (user_id, [movieIdList]) 활성 리뷰 배치 조회 — 추천 이력 페이지 별점 복원용.
+     *
+     * <p>{@code is_deleted = false} 조건. {@code RecommendationHistoryService} 가
+     * 추천 이력 페이지에 표시할 페이지(20건) 단위로 배치 조회하여 N+1 회피.
+     * 빈 리스트가 들어오면 빈 결과 반환 (Mapper XML 측 if-test 가드).</p>
+     */
+    List<Review> findByUserIdAndMovieIds(@Param("userId") String userId,
+                                          @Param("movieIds") java.util.Collection<String> movieIds);
+
     // ═══ Review 쓰기 ═══
 
     /** 리뷰 등록 (INSERT) */
