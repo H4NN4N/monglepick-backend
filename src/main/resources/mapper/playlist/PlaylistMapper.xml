@@ -124,12 +124,17 @@
         - item_count : LEFT JOIN playlist_item + GROUP BY COUNT
         - is_shared  : LEFT JOIN posts(PLAYLIST_SHARE, PUBLISHED, not deleted)로 공유 여부 판별
     -->
+    <!--
+        공유 모달용 — 아직 커뮤니티에 공유하지 않은 플레이리스트만 반환.
+        HAVING MAX(p.post_id) IS NULL: PLAYLIST_SHARE 포스트가 없는 것만 포함.
+        is_shared는 항상 0(false)이지만 DTO 호환을 위해 유지.
+    -->
     <select id="findShareableByUserId" resultMap="playlistShareableResultMap">
         SELECT pl.playlist_id, pl.user_id, pl.playlist_name, pl.description, pl.is_public,
                pl.cover_image_url, pl.like_count, pl.is_imported, pl.is_deleted,
                pl.created_at, pl.updated_at, pl.created_by, pl.updated_by,
-               COUNT(DISTINCT pi.playlist_item_id)                  AS item_count,
-               CASE WHEN MAX(p.post_id) IS NOT NULL THEN 1 ELSE 0 END AS is_shared
+               COUNT(DISTINCT pi.playlist_item_id) AS item_count,
+               0                                   AS is_shared
         FROM playlist pl
         LEFT JOIN playlist_item pi ON pi.playlist_id = pl.playlist_id
         LEFT JOIN posts p ON p.playlist_id = pl.playlist_id
@@ -141,8 +146,23 @@
         GROUP BY pl.playlist_id, pl.user_id, pl.playlist_name, pl.description, pl.is_public,
                  pl.cover_image_url, pl.like_count, pl.is_imported, pl.is_deleted,
                  pl.created_at, pl.updated_at, pl.created_by, pl.updated_by
+        HAVING MAX(p.post_id) IS NULL
         ORDER BY pl.created_at DESC
         LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- 커뮤니티 미공유 플레이리스트 총 건수 — 페이지 조립용 -->
+    <select id="countUnsharedByUserId" resultType="long">
+        SELECT COUNT(*)
+        FROM playlist pl
+        LEFT JOIN posts p ON p.playlist_id = pl.playlist_id
+                         AND p.category    = 'PLAYLIST_SHARE'
+                         AND p.status      = 'PUBLISHED'
+                         AND p.is_deleted  = false
+        WHERE pl.user_id   = #{userId}
+          AND pl.is_deleted = false
+        GROUP BY pl.playlist_id
+        HAVING MAX(p.post_id) IS NULL
     </select>
 
     <!-- ═══ Playlist 쓰기 ═══ -->
