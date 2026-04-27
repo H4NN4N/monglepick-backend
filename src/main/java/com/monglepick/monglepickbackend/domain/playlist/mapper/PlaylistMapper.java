@@ -44,14 +44,17 @@ public interface PlaylistMapper {
     long countByUserId(@Param("userId") String userId);
 
     /**
-     * 커뮤니티 공유 모달용 플레이리스트 목록 조회.
+     * 커뮤니티 공유 모달용 플레이리스트 목록 조회 — 아직 공유하지 않은 것만 반환.
      *
-     * <p>기본 목록 조회에 더해 영화 수(itemCount)와 커뮤니티 공유 여부(isShared)를
-     * 단일 쿼리로 함께 반환한다. 프론트엔드의 "공유할 플레이리스트 선택" 모달에서 사용한다.</p>
+     * <p>PLAYLIST_SHARE 포스트가 없는(미공유) 플레이리스트만 반환한다.
+     * 이미 공유된 플레이리스트는 목록에서 제외하여 중복 공유 혼란을 방지한다.</p>
      */
     List<Playlist> findShareableByUserId(@Param("userId") String userId,
                                          @Param("offset") int offset,
                                          @Param("limit") int limit);
+
+    /** 커뮤니티 미공유 플레이리스트 총 건수 — 공유 모달 페이지 조립용 */
+    long countUnsharedByUserId(@Param("userId") String userId);
 
     /** 공개 플레이리스트 목록 조회 (페이징) */
     List<Playlist> findPublicPlaylists(@Param("offset") int offset,
