@@ -435,7 +435,7 @@ public class PlaylistService {
         int limit  = pageable.getPageSize();
 
         List<Playlist> playlists = playlistMapper.findShareableByUserId(userId, offset, limit);
-        long total = playlistMapper.countByUserId(userId);
+        long total = playlistMapper.countUnsharedByUserId(userId); // 미공유 건수만 카운트
 
         List<PlaylistDto.ShareablePlaylistResponse> content = playlists.stream()
                 .map(PlaylistDto.ShareablePlaylistResponse::from)
