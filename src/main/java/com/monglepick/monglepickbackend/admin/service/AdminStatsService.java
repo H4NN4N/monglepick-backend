@@ -338,9 +338,10 @@ public class AdminStatsService {
      * <ul>
      *   <li>{@code score}: {@link RecommendationLog#getScore()} 원본값 (0.0~1.0 정규화 가정)</li>
      *   <li>{@code feedback}: {@code clicked=true} 면 "CLICKED", 그 외 null.
-     *       찜/봤어요/좋아요/관심없음 등 다른 피드백은 현재 {@link RecommendationImpact}
-     *       / {@code recommendation_feedback} 에 분리 저장되어 있어, 본 탭의 단일 컬럼으로는
-     *       클릭 여부만 표시한다 (상세 분석은 별도 탭에서 제공 예정).</li>
+     *       찜/봤어요/관심없음 등 funnel 피드백은 {@link RecommendationImpact} 단일 출처에서,
+     *       별점/리뷰는 reviews 테이블(2026-04-27 통합 — recommendation_feedback 폐기 후
+     *       단일 진실 원본)에 저장되어 있어, 본 탭의 단일 컬럼으로는 클릭 여부만 표시한다
+     *       (상세 분석은 별도 탭에서 제공 예정).</li>
      * </ul>
      *
      * <h4>N+1 주의</h4>

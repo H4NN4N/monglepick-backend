@@ -1,12 +1,15 @@
 package com.monglepick.monglepickbackend.domain.review.service;
 
 import com.monglepick.monglepickbackend.domain.recommendation.entity.RecommendationImpact;
+import com.monglepick.monglepickbackend.domain.recommendation.entity.RecommendationLog;
 import com.monglepick.monglepickbackend.domain.recommendation.repository.RecommendationImpactRepository;
+import com.monglepick.monglepickbackend.domain.recommendation.repository.RecommendationLogRepository;
 import com.monglepick.monglepickbackend.domain.review.dto.ReviewCreateRequest;
 import com.monglepick.monglepickbackend.domain.review.dto.ReviewResponse;
 import com.monglepick.monglepickbackend.domain.reward.dto.RewardResult;
 import com.monglepick.monglepickbackend.domain.review.dto.ReviewUpdateRequest;
 import com.monglepick.monglepickbackend.domain.review.entity.Review;
+import com.monglepick.monglepickbackend.domain.review.entity.ReviewCategoryCode;
 import com.monglepick.monglepickbackend.domain.review.entity.ReviewLike;
 import com.monglepick.monglepickbackend.domain.review.mapper.ReviewMapper;
 import com.monglepick.monglepickbackend.domain.reward.service.RewardService;
@@ -44,6 +47,12 @@ public class ReviewService {
 
     /** 추천 임팩트 리포지토리 — 리뷰 작성 시 rated 플래그 업데이트 (윤형주 recommendation 도메인 유지) */
     private final RecommendationImpactRepository recommendationImpactRepository;
+
+    /**
+     * 추천 로그 리포지토리 — 추천 카드에서 리뷰 작성 시 movie_id/소유권 검증용
+     * (recommendation_feedback 폐기 후 통합 경로, 2026-04-27).
+     */
+    private final RecommendationLogRepository recommendationLogRepository;
 
     /**
      * 시청 이력 서비스 — 리뷰 작성 시 user_watch_history 자동 동기화 (P0-2, 2026-04-24).
@@ -128,6 +137,78 @@ public class ReviewService {
         // 리워드 지급 포인트를 응답에 포함 (earned=true일 때만 포인트 표시)
         Integer rewardPoints = rewardResult.earned() ? rewardResult.points() : null;
         return ReviewResponse.from(review, rewardPoints);
+    }
+
+    /**
+     * 추천 카드에서 별점/코멘트를 제출하면 reviews 테이블에 UPSERT 한다 (2026-04-27 신설).
+     *
+     * <p>"봤다 = 리뷰" 단일 진실 원본 원칙(CLAUDE.md)에 따라, 추천 내역 페이지의 별점 제출은
+     * 더 이상 {@code recommendation_feedback} 으로 가지 않고 본 메서드를 통해 reviews 테이블에
+     * 저장된다. 추천 카드는 같은 추천에 대해 별점을 여러 번 갱신할 수 있으므로
+     * (user_id, movie_id) 활성 리뷰가 있으면 update, 없으면 create 로 동작한다.</p>
+     *
+     * <h3>처리 흐름</h3>
+     * <ol>
+     *   <li>recommendation_log 소유권 검증 (recommendationLogId × userId) — 없으면 REC001 (404)</li>
+     *   <li>movie_id 추출 (JOIN FETCH 된 movie)</li>
+     *   <li>활성 리뷰(is_deleted=false) 조회</li>
+     *   <li>있으면 update — rating/contents 갱신, reward 미지급 (이미 부여 받은 리뷰)</li>
+     *   <li>없으면 create — {@link #createReview(String, ReviewCreateRequest, String)} 위임 (reward + watch_history + impact.rated 자동 처리)</li>
+     * </ol>
+     *
+     * <p>reviewSource = {@code "rec_log_{logId}"}, reviewCategoryCode = {@link ReviewCategoryCode#AI_RECOMMEND}
+     * 으로 강제 세팅하여 리뷰의 출처가 "AI 추천 카드" 임을 명시한다.</p>
+     *
+     * @param userId              JWT 에서 추출한 사용자 ID
+     * @param recommendationLogId 평가 대상 추천 로그 ID
+     * @param rating              별점 (0.5 ~ 5.0)
+     * @param content             리뷰 본문 (선택, null/빈 문자열 허용)
+     * @return 저장된 리뷰 응답 DTO (신규 작성 시 reward 포인트 포함, update 시 null)
+     * @throws BusinessException RECOMMENDATION_LOG_NOT_FOUND — 추천 로그가 없거나 본인 로그가 아닐 때
+     */
+    @Transactional
+    public ReviewResponse createOrUpdateFromRecommendation(
+            String userId,
+            Long recommendationLogId,
+            Double rating,
+            String content) {
+
+        // 1) 추천 로그 소유권 검증 + movie_id 획득 (movie JOIN FETCH 포함)
+        RecommendationLog recLog = recommendationLogRepository
+                .findByRecommendationLogIdAndUserId(recommendationLogId, userId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.RECOMMENDATION_LOG_NOT_FOUND,
+                        "추천 이력을 찾을 수 없습니다: recommendationLogId=" + recommendationLogId));
+        String movieId = recLog.getMovie().getMovieId();
+
+        // 2) 활성 리뷰 단건 조회 — UPSERT 분기
+        Review existing = reviewMapper.findByUserIdAndMovieId(userId, movieId);
+
+        if (existing != null) {
+            // 2-a) 기존 리뷰 update — content 는 null 허용 (별점만 갱신 케이스 지원)
+            existing.update(rating, content);
+            reviewMapper.update(existing);
+            log.info("추천 카드 리뷰 update — reviewId:{}, userId:{}, movieId:{}, recLogId:{}",
+                    existing.getReviewId(), userId, movieId, recommendationLogId);
+
+            // recommendation_impact.rated 마킹 — 기존 리뷰가 있어도 funnel 지표 정합성 유지
+            recommendationImpactRepository.findByUserIdAndMovieId(userId, movieId)
+                    .forEach(RecommendationImpact::markRated);
+
+            return ReviewResponse.from(existing);
+        }
+
+        // 2-b) 신규 리뷰 — createReview 에 위임 (reward + watch_history + impact.rated 일괄 처리)
+        ReviewCreateRequest createRequest = new ReviewCreateRequest(
+                movieId,
+                rating,
+                content,
+                "rec_log_" + recommendationLogId,
+                ReviewCategoryCode.AI_RECOMMEND
+        );
+        log.info("추천 카드 리뷰 신규 작성 위임 — userId:{}, movieId:{}, recLogId:{}",
+                userId, movieId, recommendationLogId);
+        return createReview(movieId, createRequest, userId);
     }
 
     /**

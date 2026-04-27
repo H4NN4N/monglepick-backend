@@ -25,8 +25,12 @@ import java.util.List;
  * <ul>
  *   <li>본 서비스: <b>쓰기 전용</b> (Agent 내부 호출 경로). ServiceKey 인증 경유.</li>
  *   <li>{@link RecommendationHistoryService}: <b>유저 대면 조회</b>. 저장된 로그를
- *       RecommendationImpact 의 찜/봤어요 상태와 병합해 반환.</li>
- *   <li>{@link RecommendationFeedbackService}: <b>피드백(좋아요/관심없음)</b>.
+ *       RecommendationImpact 의 찜/봤어요 상태 + reviews 테이블의 별점/본문과 병합해 반환.</li>
+ *   <li>{@link com.monglepick.monglepickbackend.domain.recommendation.controller.RecommendationReviewController}:
+ *       <b>추천 카드 별점/코멘트 UPSERT</b>. 본 서비스가 저장한 {@code recommendation_log_id} 를
+ *       소유권 검증/movie_id 매핑에만 활용하고, 실제 데이터는 reviews 테이블로 직접 저장한다
+ *       (2026-04-27 통합 — 기존 recommendation_feedback 경로 폐기).</li>
+ *   <li>{@link RecommendationImpactService}: <b>찜/봤어요/관심없음/rated 등 funnel 단계 마킹</b>.
  *       본 서비스가 저장한 {@code recommendation_log_id} 를 FK 로 사용한다.</li>
  * </ul>
  *

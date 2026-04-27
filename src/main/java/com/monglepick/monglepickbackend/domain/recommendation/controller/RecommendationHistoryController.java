@@ -27,20 +27,22 @@ import java.security.Principal;
 /**
  * 추천 이력 REST API 컨트롤러.
  *
- * <p>클라이언트 추천 이력 탭에서 호출하는 3개 엔드포인트를 제공한다.
- * 기존 {@link RecommendationFeedbackController}와 동일한 {@code /api/v1/recommendations} 베이스 경로를
- * 공유하되, 목록 조회 및 찜/봤어요 토글 엔드포인트를 신규로 추가한다.</p>
+ * <p>클라이언트 추천 이력 탭에서 호출하는 4개 엔드포인트를 제공한다.
+ * {@code /api/v1/recommendations} 베이스 경로를 추천 도메인 다른 컨트롤러
+ * ({@link RecommendationReviewController}, {@link RecommendationInternalController}) 와 공유한다.</p>
  *
  * <h3>엔드포인트 목록</h3>
  * <ul>
  *   <li>GET  /api/v1/recommendations              — 추천 이력 목록 조회 (페이징)</li>
  *   <li>POST /api/v1/recommendations/{id}/wishlist — 찜 토글</li>
  *   <li>POST /api/v1/recommendations/{id}/watched  — 봤어요 토글</li>
+ *   <li>POST /api/v1/recommendations/{id}/dismiss  — 관심없음 토글 (P2)</li>
  * </ul>
  *
- * <h3>기존 엔드포인트와의 관계</h3>
- * <p>{@code POST /api/v1/recommendations/{id}/feedback}는
- * {@link RecommendationFeedbackController}가 담당하며 이 컨트롤러와 경로가 겹치지 않는다.</p>
+ * <h3>관련 컨트롤러</h3>
+ * <p>추천 카드의 별점/코멘트 제출은 {@link RecommendationReviewController} 의
+ * {@code POST /api/v1/recommendations/{id}/review} 가 담당한다 (2026-04-27 신설,
+ * 기존 {@code /feedback} 엔드포인트는 폐기되어 reviews 테이블로 단일 통합).</p>
  *
  * <h3>인증</h3>
  * <p>모든 엔드포인트는 JWT Bearer 토큰 인증 필수.</p>

@@ -1,12 +1,12 @@
 package com.monglepick.monglepickbackend.domain.recommendation.service;
 
 import com.monglepick.monglepickbackend.domain.recommendation.dto.RecommendationHistoryDto;
-import com.monglepick.monglepickbackend.domain.recommendation.entity.RecommendationFeedback;
 import com.monglepick.monglepickbackend.domain.recommendation.entity.RecommendationImpact;
 import com.monglepick.monglepickbackend.domain.recommendation.entity.RecommendationLog;
-import com.monglepick.monglepickbackend.domain.recommendation.repository.RecommendationFeedbackRepository;
 import com.monglepick.monglepickbackend.domain.recommendation.repository.RecommendationImpactRepository;
 import com.monglepick.monglepickbackend.domain.recommendation.repository.RecommendationLogRepository;
+import com.monglepick.monglepickbackend.domain.review.entity.Review;
+import com.monglepick.monglepickbackend.domain.review.mapper.ReviewMapper;
 import com.monglepick.monglepickbackend.global.exception.BusinessException;
 import com.monglepick.monglepickbackend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -58,10 +58,13 @@ public class RecommendationHistoryService {
     private final RecommendationImpactRepository recommendationImpactRepository;
 
     /**
-     * 추천 피드백 리포지토리 — 별점/피드백유형 복원용 (QA #172).
-     * getRecommendationHistory 에서 페이지 단위 배치 조회로 N+1 을 회피한다.
+     * 리뷰 Mapper — 별점/리뷰 본문 복원용 (2026-04-27 통합).
+     *
+     * <p>"봤다 = 리뷰" 단일 진실 원본 원칙(CLAUDE.md)에 따라 추천 카드의 별점/코멘트는
+     * reviews 테이블에서 직접 가져온다. 페이지 단위(20건) 배치 조회로 N+1 회피.
+     * 기존 {@code RecommendationFeedbackRepository} 의존성은 폐기됐다.</p>
      */
-    private final RecommendationFeedbackRepository recommendationFeedbackRepository;
+    private final ReviewMapper reviewMapper;
 
     // ─────────────────────────────────────────────
     // 조회 (readOnly = true 상속)
@@ -105,26 +108,27 @@ public class RecommendationHistoryService {
                     recommendationLogRepository.findByUserIdWithMovie(userId, pageable);
         }
 
-        // QA #172 (2026-04-23): 현재 페이지의 모든 로그 ID 를 모아 한 번의 쿼리로 피드백을 배치 조회.
-        // 루프 안에서 feedback 단건 조회를 돌리면 페이지당 최대 20회 추가 쿼리가 발생하므로
-        // IN 절 1회 조회로 대체해 N+1 을 방지한다. 피드백이 없으면 맵에서 get() 결과 null.
-        List<Long> pageLogIds = logPage.getContent().stream()
-                .map(RecommendationLog::getRecommendationLogId)
+        // 2026-04-27 통합: 현재 페이지의 모든 movie_id 를 모아 한 번의 쿼리로 활성 리뷰 배치 조회.
+        // 기존엔 recommendation_feedback 을 (user_id, log_id) 기준으로 IN 조회했으나,
+        // recommendation_feedback 테이블이 폐기되면서 reviews 단일 진실 원본으로 통합됐다.
+        // reviews 는 (user_id, movie_id) 단위라서 같은 영화가 다른 추천 로그로 재추천된 페이지에서도
+        // 같은 review 가 모든 행에 반영된다 (의도된 동작 — 별점은 영화 단위 사용자 표현).
+        List<String> pageMovieIds = logPage.getContent().stream()
+                .map(rec -> rec.getMovie().getMovieId())
+                .distinct()
                 .toList();
-        Map<Long, RecommendationFeedback> feedbackByLogId = pageLogIds.isEmpty()
+        Map<String, Review> reviewByMovieId = pageMovieIds.isEmpty()
                 ? Map.of()
-                : recommendationFeedbackRepository
-                        .findAllByUserIdAndLogIdIn(userId, pageLogIds)
+                : reviewMapper.findByUserIdAndMovieIds(userId, pageMovieIds)
                         .stream()
                         .collect(Collectors.toMap(
-                                fb -> fb.getRecommendationLog().getRecommendationLogId(),
+                                Review::getMovieId,
                                 Function.identity(),
-                                // user_id+recommendation_id UNIQUE 제약으로 중복 불가하지만
-                                // 방어적으로 가장 나중 것 우선.
+                                // 활성 리뷰는 (user_id, movie_id) 단일이지만 방어적으로 가장 나중 것 우선
                                 (a, b) -> b
                         ));
 
-        // 각 로그에 대응하는 Impact + Feedback 을 조립해 DTO 로 변환.
+        // 각 로그에 대응하는 Impact + Review 를 조립해 DTO 로 변환.
         return logPage.map(recLog -> {
             // (userId, movieId, recommendationLogId) 조합으로 Impact 단건 조회
             Optional<RecommendationImpact> impact =
@@ -139,9 +143,9 @@ public class RecommendationHistoryService {
             boolean wishlisted = impact.map(RecommendationImpact::getWishlisted).orElse(false);
             boolean watched    = impact.map(RecommendationImpact::getWatched).orElse(false);
 
-            RecommendationFeedback feedback = feedbackByLogId.get(recLog.getRecommendationLogId());
+            Review review = reviewByMovieId.get(recLog.getMovie().getMovieId());
             return RecommendationHistoryDto.RecommendationHistoryResponse.from(
-                    recLog, wishlisted, watched, feedback);
+                    recLog, wishlisted, watched, review);
         });
     }
 
