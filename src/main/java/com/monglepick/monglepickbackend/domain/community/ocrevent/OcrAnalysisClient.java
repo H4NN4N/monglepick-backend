@@ -1,5 +1,7 @@
 package com.monglepick.monglepickbackend.domain.community.ocrevent;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,6 +46,7 @@ public class OcrAnalysisClient {
      * 이는 기존 Map 파싱 구현의 {@code instanceof String ? s : "FAILED"} 휴리스틱과
      * 호환성을 유지하기 위함.</p>
      */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record OcrResponse(
             boolean success,
             String status,
