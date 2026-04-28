@@ -137,6 +137,7 @@
         LEFT JOIN users u ON p.user_id = u.user_id
         WHERE p.status = #{status}
         AND p.is_deleted = false
+        AND p.category != 'PLAYLIST_SHARE'
         <if test="keyword != null and keyword != ''">
             AND (p.title LIKE CONCAT('%', #{keyword}, '%')
             OR p.content LIKE CONCAT('%', #{keyword}, '%'))
@@ -174,6 +175,7 @@
         FROM posts
         WHERE status = #{status}
         AND is_deleted = false
+        AND category != 'PLAYLIST_SHARE'
         <if test="keyword != null and keyword != ''">
             AND (title LIKE CONCAT('%', #{keyword}, '%')
             OR content LIKE CONCAT('%', #{keyword}, '%'))
